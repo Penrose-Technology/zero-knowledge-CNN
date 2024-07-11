@@ -32,7 +32,6 @@ class Prover:
             sum = (A_c*A_F).sum() % p.prime 
 
         g_t = np.zeros((width,3), dtype='int32')
-        A_s = np.zeros(p.N, dtype='int32')
         for i in range(width):
             for b in range(2**(width-i-1)):
                 for t in range(3):
@@ -41,13 +40,11 @@ class Prover:
                     g_t[i,t] = ( g_t[i,t] + F_t*c_t ) % p.prime
                 A_F[b] = ( A_F[b]*(1 - r[i]) + A_F[b+2**(width-i-1)]*r[i] ) % p.prime
                 A_c[b] = ( A_c[b]*(1 - r[i]) + A_c[b+2**(width-i-1)]*r[i] ) % p.prime
-                A_s[b] = ( A_F[b]*A_c[b] ) % p.prime
 
         if inverse:
-           A_s = p.N_inv*A_s % p.prime
            g_t = p.N_inv*g_t % p.prime
 
-        return sum, g_t, A_s
+        return sum, g_t
 
 
 class Verifier:
@@ -135,7 +132,7 @@ def sumcheck_ntt_verify(c, A, r1, r2, inverse=False):
 
     # Proving Process
     P = Prover()    
-    sum, g_t, _ = P.sumcheck_ntt(c_p, A_F_p, r2, inverse=inverse)
+    sum, g_t = P.sumcheck_ntt(c_p, A_F_p, r2, inverse=inverse)
     print(f"prover sends initial sumation: \n {sum}")
     print(f"prover sends g_t: \n {g_t}")
     if inverse:
@@ -170,6 +167,7 @@ def sumcheck_ntt_verify(c, A, r1, r2, inverse=False):
             raise ValueError('ntt/intt result error !!!')
     except ValueError as e:
         print(str(e))
+        sys.exit(1)
 
 
 def main():

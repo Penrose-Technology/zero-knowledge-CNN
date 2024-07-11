@@ -7,6 +7,7 @@ from circuit import circuit as C
 import sumcheck as S
 from extension import single_extension
 
+P = S.Prover()
 
 def get_F_gate_ext_t(F_gate_i, r): 
     if not len(F_gate_i.shape) == 3:
@@ -40,41 +41,41 @@ def get_F_gate_ext_t(F_gate_i, r):
 
     return out
 
-
-def get_F_gate_i_ext(F_gate_i: Dict[Tuple[int, int, int], int], input_bitwise: Tuple[int, int, int], r: List[List[int]]): 
+def _get_F_gate_i_ext(layer_i_size: Dict[str, int], \
+                      layer_i_gate: Dict[Tuple[int, int, int], int], \
+                      r_a: List[int], r_b: List[int], r_c: List[int]):
 
     F_gate_c_i_ext: Dict[Tuple[int, int], int] = {}
     F_gate_b_i_ext: Dict[int, int] = {}
-    a_bitwise, b_bitwise, c_bitwise = input_bitwise
+
+    c_bitwidth = int(np.log2(layer_i_size['c']))
+    b_bitwidth = int(np.log2(layer_i_size['b']))
+    a_bitwidth = int(np.log2(layer_i_size['a']))
 
     # inilization
-    for key, value in F_gate_i.items():
+    for key, value in layer_i_gate.items():
         a_i, b_i, _ = key
         F_gate_c_i_ext[(a_i, b_i)] = 0
         F_gate_b_i_ext[a_i] = 0
     F_gate_a_i_ext = 0
     
     # multilinear extension in (a, b, c) direction.
-    for key, value in F_gate_i.items():
+    for key, value in layer_i_gate.items():
         a_i, b_i, c_i = key
-        c_i_extend = single_extension(value, c_i, r[2], c_bitwise)
+        c_i_extend = single_extension(value, c_i, r_c, c_bitwidth)
         F_gate_c_i_ext[(a_i, b_i)] = (F_gate_c_i_ext[(a_i, b_i)] + c_i_extend) % p.prime
 
     for key, value in F_gate_c_i_ext.items():
         a_i, b_i = key
-        b_i_extend = single_extension(value, b_i, r[1], b_bitwise)
+        b_i_extend = single_extension(value, b_i, r_b, b_bitwidth)
         F_gate_b_i_ext[a_i] = (F_gate_b_i_ext[a_i] + b_i_extend) % p.prime
 
     for key, value in F_gate_b_i_ext.items():
         a_i = key
-        a_i_extend = single_extension(value, a_i, r[0], a_bitwise)
+        a_i_extend = single_extension(value, a_i, r_a, a_bitwidth)
         F_gate_a_i_ext = (F_gate_a_i_ext + a_i_extend) % p.prime
 
-    #print(f"F_gate_c_i_ext is {F_gate_c_i_ext}")
-    #print(f"F_gate_b_i_ext is {F_gate_b_i_ext}")
-    #print(f"F_gate_a_i_ext is {F_gate_a_i_ext}")
-
-    return F_gate_a_i_ext
+    return F_gate_a_i_ext    
 
 
 def get_F_gate_ext(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[int]]], extension_check=False):
@@ -89,135 +90,95 @@ def get_F_gate_ext(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[in
         idx = i // 2
 
         if key == f'The {idx}-th Layer Input Size':
-            size = value
-            c_bitwise = int(np.log2(size['c']))
-            b_bitwise = int(np.log2(size['b']))
-            a_bitwise = int(np.log2(size['a']))
-            input_bitwise = (a_bitwise, b_bitwise, c_bitwise)
+            layer_i_size = value
+            c_bitwidth = int(np.log2(layer_i_size['c']))
+            b_bitwidth = int(np.log2(layer_i_size['b']))
+            a_bitwidth = int(np.log2(layer_i_size['a']))
 
         if key == f'The {idx}-th Layer {gate_type}-Gate':
-            F_gate_i = value
+            layer_i_gate = value
             if extension_check:
-                for key, value in F_gate_i.items():
+                for key, value in layer_i_gate.items():
                     #get original value (before extension)
                     a_o_i, b_o_i, c_o_i = key
-                    c_o_i_v = [int(char) for char in np.binary_repr(c_o_i, width=c_bitwise)]
-                    b_o_i_v = [int(char) for char in np.binary_repr(b_o_i, width=b_bitwise)]
-                    a_o_i_v = [int(char) for char in np.binary_repr(a_o_i, width=a_bitwise)]
-                    r_o_i = [a_o_i_v, b_o_i_v, c_o_i_v]
+                    c_o_i_v = [int(char) for char in np.binary_repr(c_o_i, width=c_bitwidth)]
+                    b_o_i_v = [int(char) for char in np.binary_repr(b_o_i, width=b_bitwidth)]
+                    a_o_i_v = [int(char) for char in np.binary_repr(a_o_i, width=a_bitwidth)]
 
                     # Points at {0, 1}^n should be equal before and after extension.
-                    if not get_F_gate_i_ext(F_gate_i, input_bitwise, r_o_i) == value:
+                    if not _get_F_gate_i_ext(layer_i_size, layer_i_gate, a_o_i_v, b_o_i_v, c_o_i_v) == value:
                         raise ValueError("Multilinear Extension Error ! Value unequal !!!")
                 return [0]            
             else:
-                out.append(get_F_gate_i_ext(F_gate_i, input_bitwise, r[idx]))
+                out.append(_get_F_gate_i_ext(layer_i_size, layer_i_gate, r[idx][0], r[idx][1], r[idx][2]))
 
     return out
 
 
-
-def _get_F_gate_ext_g_t(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[int]]]):
-
+def _get_F_gate_ext_g_t(gate_type: str, \
+                        layer_i_size: Dict[str, int], \
+                        layer_i_gate: Dict[Tuple[int, int, int], int], \
+                        r_a: List[int], r_b: List[int], r_c: List[int], \
+                        mu: int, \
+                        F_W_i: List[int]):
+    
     if not ((gate_type == 'ADD') or (gate_type == 'MULTI')):
         raise ValueError("Error Gate Type !!!")
 
-    A_F_out = []
+    c_bitwidth = int(np.log2(layer_i_size['c']))
+    b_bitwidth = int(np.log2(layer_i_size['b']))
+    a_bitwidth = int(np.log2(layer_i_size['a']))         
+    bc_bitwidth = b_bitwidth + c_bitwidth
+    r_bc = r_b + r_c
+    A_F_i = np.zeros((2**bc_bitwidth), dtype='int32')
+    #print(f"A_F is {A_F}, shape is {np.shape(A_F)}")
 
-    for i, (key, value) in enumerate(F_gate.items()):
+    # Initalize F(a, b, c) from dictionary and precompute F(a*, b, c)
+    for key, init_value in layer_i_gate.items():
+        a_o_i, b_o_i, c_o_i = key
+        init_idx = b_o_i*2**(c_bitwidth) + c_o_i
+        unextended_value = (init_value*mu) % p.prime
+        A_F_i[init_idx] = (A_F_i[init_idx] + single_extension(unextended_value, a_o_i, r_a, bitwidth=a_bitwidth) ) % p.prime
+    #print(f"A_F_i is {A_F_i}")      
 
-        idx = i // 2
+    F_W_gate_i = np.zeros_like(A_F_i)
+    # Evaluation
+    # W_add(b, c) = W(b) + W(c)
+    # W_multi(b, c) = W(b) * W(c)
+    for n in range(2**b_bitwidth):
+        for m in range(2**c_bitwidth):
+            if gate_type == 'ADD':
+                F_W_gate_i[(n<<c_bitwidth) + m] = (F_W_i[n] + F_W_i[m]) % p.prime
+            else:
+                F_W_gate_i[(n<<c_bitwidth) + m] = (F_W_i[n] * F_W_i[m]) % p.prime
 
-        if key == f'The {idx}-th Layer Input Size':
-            size = value
-            c_bitwidth = int(np.log2(size['c']))
-            b_bitwidth = int(np.log2(size['b']))
-            a_bitwidth = int(np.log2(size['a']))
-            abc_bitwidth = a_bitwidth + b_bitwidth + c_bitwidth           
-            bc_bitwidth = b_bitwidth + c_bitwidth
-            A_F = np.zeros((2**abc_bitwidth), dtype='int32')
-            #print(f"A_F is {A_F}, shape is {np.shape(A_F)}")
-        
-        if key == f'The {idx}-th Layer {gate_type}-Gate':
-            F_gate_i = value
+    # Extension
+    # f(b, c) = add(a*, b, c)*W_add(b, c) + multi(a*, b, c)*W_multi(b, c)
+    sum_i, g_t_i = P.sumcheck_ntt(F_W_gate_i, A_F_i, r_bc, inverse=False, width=bc_bitwidth)
+    #print(f"g_t is {g_t}, sum is {sum}")
+    return sum_i, g_t_i
 
-            # Initalize F(a, b, c) from dictionary
-            for key, init_value in F_gate_i.items():
-                a_o_i, b_o_i, c_o_i = key
-                init_idx = a_o_i*2**(bc_bitwidth) + b_o_i*2**(c_bitwidth) + c_o_i
-                A_F[init_idx] = init_value
-            #print(f"A_F is {A_F}")
+def get_F_gate_ext_g_t( layer_i_size: Dict[str, int], \
+                        layer_i_add: Dict[Tuple[int, int, int], int], \
+                        layer_i_multi: Dict[Tuple[int, int, int], int], \
+                        r_a: List[int], r_b: List[int], r_c: List[int], \
+                        mu: int, \
+                        F_W_i: List[int], \
+                        only_add=False, only_multi=False):
+    if only_add:
+        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t('ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
+        sum_multi_i = 0; g_t_multi_i = np.zeros_like(g_t_add_i)
+    if only_multi:
+        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t('MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
+        sum_add_i = 0; g_t_add_i = np.zeros_like(g_t_multi_i)
+    else:
+        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t('ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
+        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t('MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
 
-            # Precompute F(a*, b, c) 
-            for a_i in range(a_bitwidth):
-                for a_i_bits in range(2**(abc_bitwidth-a_i-1)):
-                    A_F[a_i_bits] = ( A_F[a_i_bits]*(1 - r[idx][0][a_i]) + A_F[a_i_bits+2**(abc_bitwidth-a_i-1)]*r[idx][0][a_i] ) % p.prime
+    sum_i = (sum_add_i + sum_multi_i) % p.prime
+    g_t_i = (g_t_add_i + g_t_multi_i) % p.prime
 
-            A_F_i = A_F[:2**bc_bitwidth]
-            A_F_out.append(A_F_i)
-            #print(f"A_F_i is {A_F_i}, shape is {np.shape(A_F_i)}") 
-    return A_F_out  
-
-def get_F_gate_ext_g_t(F_gate_add: Dict[str, Dict], F_gate_multi: Dict[str, Dict], r: List[List[List[int]]], F_W: List[List[int]]):
-
-    g_t = []
-    sum = []
-
-    if not len(F_gate_add) == len(F_gate_multi):
-        raise ValueError("F_gate_add not equal to F_gate_multi !!!")
-    
-    A_F_add = _get_F_gate_ext_g_t('ADD', F_gate_add, r)
-    A_F_multi = _get_F_gate_ext_g_t('MULTI', F_gate_multi, r)
-
-    if not len(A_F_add) == len(A_F_multi):
-        raise ValueError("A_F_add not equal to A_F_multi !!!")
-
-    for i, (key, value) in enumerate(F_gate_add.items()):
-
-        idx = i // 2
-
-        if key == f'The {idx}-th Layer Input Size':
-            size = value
-            c_bitwidth = int(np.log2(size['c']))
-            b_bitwidth = int(np.log2(size['b']))  
-            bc_bitwidth = b_bitwidth + c_bitwidth
-            r_bc = r[idx][1] + r[idx][2]
-            
-            F_W_add_i = np.zeros_like(A_F_add[idx])
-            F_W_multi_i = np.zeros_like(A_F_multi[idx])
-            g_t_i = np.zeros((bc_bitwidth, 3), dtype='int32')
-
-            # Evaluation
-            # W_add(b, c) = W(b) + W(c)
-            # W_multi(b, c) = W(b) * W(c)
-            for n in range(2**b_bitwidth):
-                for m in range(2**c_bitwidth):
-                    F_W_add_i[(n<<c_bitwidth) + m] = (F_W[idx][n] + F_W[idx][m]) % p.prime
-                    F_W_multi_i[(n<<c_bitwidth) + m] = (F_W[idx][n] * F_W[idx][m]) % p.prime
-            #print(f"F_W_add_i is {F_W_add_i}, \n F_W_multi_i is {F_W_multi_i}")
-
-            # Extension
-            # f(b, c) = add(a*, b, c)*W_add(b, c) + multi(a*, b, c)*W_multi(b, c)
-            sum_i = (A_F_add[idx]*F_W_add_i + A_F_multi[idx]*F_W_multi_i).sum() % p.prime
-            sum.append(sum_i)
-            for bit in range(bc_bitwidth):
-                for b in range(2**(bc_bitwidth-bit-1)):
-                    for t in range(3):
-                        A_F_add_t = ( A_F_add[idx][b]*(1 - t) + A_F_add[idx][b+2**(bc_bitwidth-bit-1)]*t ) % p.prime
-                        A_F_multi_t = ( A_F_multi[idx][b]*(1 - t) + A_F_multi[idx][b+2**(bc_bitwidth-bit-1)]*t ) % p.prime
-                        F_W_add_i_t = ( F_W_add_i[b]*(1 - t) + F_W_add_i[b+2**(bc_bitwidth-bit-1)]*t ) % p.prime
-                        F_W_multi_i_t = ( F_W_multi_i[b]*(1 - t) + F_W_multi_i[b+2**(bc_bitwidth-bit-1)]*t ) % p.prime
-                        g_t_i[bit, t] = ( g_t_i[bit, t] + A_F_add_t*F_W_add_i_t + A_F_multi_t*F_W_multi_i_t ) % p.prime
-
-                    A_F_add[idx][b] = ( A_F_add[idx][b]*(1 - r_bc[bit]) + A_F_add[idx][b+2**(bc_bitwidth-bit-1)]*r_bc[bit] ) % p.prime
-                    A_F_multi[idx][b] = ( A_F_multi[idx][b]*(1 - r_bc[bit]) + A_F_multi[idx][b+2**(bc_bitwidth-bit-1)]*r_bc[bit] ) % p.prime
-                    F_W_add_i[b] = ( F_W_add_i[b]*(1 - r_bc[bit]) + F_W_add_i[b+2**(bc_bitwidth-bit-1)]*r_bc[bit] ) % p.prime
-                    F_W_multi_i[b] = ( F_W_multi_i[b]*(1 - r_bc[bit]) + F_W_multi_i[b+2**(bc_bitwidth-bit-1)]*r_bc[bit] ) % p.prime
-            g_t.append(g_t_i)
-
-    #print(f"g_t is {g_t}, sum is {sum}")        
-    return sum, g_t
-
+    return sum_i, g_t_i
 
 def main():
     parser = argparse.ArgumentParser(description='specify gate type')
@@ -259,7 +220,15 @@ def main():
         if get_F_gate_ext(args.operation, F_gate, r, extension_check=True) == [0]:
             print("Extension Check Pass !")
     elif args.g_t:
-        get_F_gate_ext_g_t(F_gate, F_gate_multi, r, F_W)
+        #get_F_gate_ext_g_t(F_gate, F_gate_multi, r, F_W)
+        ###
+        get_F_gate_ext_g_t(layer_i_size={'a': 4, 'b': 8, 'c': 8}, \
+                        layer_i_add={(0, 0, 1): 1, (2, 4, 5): 1, (3, 6, 7): 1}, \
+                        layer_i_multi={(1, 2, 3): 1}, \
+                        r_a=r[0][0], r_b=r[0][1], r_c=r[0][2], \
+                        mu=0, \
+                        F_W_i=F_W[0])
+        ###
 
     #regular extension
     else:
