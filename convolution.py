@@ -3,11 +3,9 @@ import parameters as p
 import sys
 import random
 from sympy import ntt, intt
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 import argparse
-from circuit import circuit as C
-import wire_prediction_ext as Wire
-import value_prediction_ext as V
+from utilities import gadget as g
 import interactive_proof as I
 import hadmard_product as h
 import sumcheck as S
@@ -25,8 +23,7 @@ class ConVolution:
         rows, cols = A.shape
         for i in range(rows-1):
             for j in range(cols-1):
-                U[i,j] = np.multiply(A[i:(i+p.kernel_size),j:(j+p.kernel_size)], W).sum()
-                #print(np.multiply(A[i:(i+kernel_size),j:(j+kernel_size)], W))
+                U[i,j] = np.multiply(A[i:(i+p.kernel_size),j:(j+p.kernel_size)], W).sum() % p.prime
         return U
 
     def trim(self, raw):
@@ -55,92 +52,184 @@ class ConVolution:
     
 
 
-def convolution_prover(X_i_2d: np.ndarray, w_i_2d: np.ndarray, zeta: Tuple[List[int], List[int]], \
-                       r: Tuple[Tuple[List[int], List[int]], Tuple[List[int], List[int]], List[int]], mu: List[List[int]]):
+def convolution_prover(Pro: S.Prover, Ver: S.Verifier, \
+                       X_i_1d: np.ndarray, w_i_1d: np.ndarray, zeta: List[int], zeta_inv: List[int],  \
+                       r: Tuple[List[int], List[int], List[int], List[int]], mu: List[List[int]]):
 
-    con = ConVolution()
-    Pro = S.Prover()
-
-    # Convert 2D matrix to 1D sequence
-    X_i_1d, w_i_1d = con.shape(X_i_2d, w_i_2d)
-    # Calculation
+    ####################################################
+    # Run ntt sumcheck
+    ####################################################
+    # ntt calculation
     gate_in_left_h = ntt(X_i_1d, prime=p.prime)
     gate_in_right_h = ntt(w_i_1d, prime=p.prime)
 
-    # Run fft sumcheck:
-    (r1, r2, r_out_h) = r
-    (r1_X_i, r1_w_i) = r1
-    (r2_X_i, r2_w_i) = r2
-    (zeta_X_i, zeta_w_i) = zeta
-    zeta_ext_X_i = ntt_init.Initilization(zeta_X_i, r1_X_i)
-    zeta_ext_w_i = ntt_init.Initilization(zeta_w_i, r1_w_i)
-    X_i_sum, X_i_g_t = Pro.sumcheck_ntt(X_i_1d, zeta_ext_X_i, r2_X_i)
-    w_i_sum, w_i_g_t = Pro.sumcheck_ntt(w_i_1d, zeta_ext_w_i, r2_w_i)
-    print(f"X_i_g_t is \n{X_i_g_t}, \n w_i_g_t is \n{w_i_g_t}")
+    # Parse random check points:
+    (r_hntt, r_ntt, r_hintt, r_intt) = r
 
+    zeta_ext_X = ntt_init.Initilization(zeta, r_hntt)
+    zeta_ext_w = zeta_ext_X.copy()
+    F_zeta_ext = Ver.multi_ext(zeta_ext_X, r_ntt)
+
+    X_i_sum, X_i_g_t = Pro.sumcheck_ntt(X_i_1d, zeta_ext_X, r_ntt)
+    w_i_sum, w_i_g_t = Pro.sumcheck_ntt(w_i_1d, zeta_ext_w, r_ntt)
+
+    # ntt extension at r_hntt
+    F_X_ntt_in_ext = Ver.multi_ext(gate_in_left_h, r_hntt)
+    F_w_ntt_in_ext = Ver.multi_ext(gate_in_right_h, r_hntt)
+
+    assert (X_i_sum == F_X_ntt_in_ext and w_i_sum == F_w_ntt_in_ext),   \
+        f'NTT Check Error! NTT input sumcheck: \n X_i_sum = {X_i_sum}, F_X_ntt_in_ext = {F_X_ntt_in_ext} \n \
+            w_i_sum = {w_i_sum}, F_w_ntt_in_ext = {F_w_ntt_in_ext}'
+    
+    
+    ####################################################
     # Run hadmard product gkr
+    ####################################################
     gate_list_h = h.hardmard_product()
     input_data_h = [[left, right] for left, right in zip(gate_in_left_h, gate_in_right_h)]
-    r1_X_i.insert(0, 0); r1_w_i.insert(0, 0)
-    r_h = [[[2*i%p.prime for i in r1_X_i], [(2*i+1)%p.prime for i in r1_w_i]]]
-    print(f"r_h is {r_h}")
-    proof_h, output_data_h = I.generate_proof(input_data_h, gate_list_h, r_h, r_out_h, mu, only_multi=True)
-    print(f"proof_h is {proof_h}")
+    # Use the same random point (r_hntt) at input layer
+    r_h_in = [[r_hntt, []]]
+    # Use the same random point (r_hintt) at outnput layer
+    r_h_out = r_intt
+    proof_h, output_data_h = I.generate_proof(input_data_h, gate_list_h, r_h_in, r_h_out, mu, only_multi=True)
+    #print(f"proof_h is {proof_h}")
+    #print(f"output_data_h is: \n {output_data_h}")
 
-    proof = (X_i_g_t, w_i_g_t)
+    F_W_in_ext, _, _, _ = proof_h
+    assert (F_W_in_ext[0] == F_X_ntt_in_ext  and  F_W_in_ext[1] == F_w_ntt_in_ext),   \
+        f'Random Point Check Error! Hadmard input layer: \n F_W_in_ext_left = {F_W_in_ext[0]}, F_X_ntt_in_ext = {F_X_ntt_in_ext} \n  \
+            F_W_in_ext_right = {F_W_in_ext[1]}, F_w_ntt_in_ext = {F_w_ntt_in_ext}'
 
-    return proof
 
-def ntt_verifier(Verifier: S.Verifier, ntt_i_g_t: np.ndarray, r2: np.ndarray):
+    ####################################################
+    # Run intt sumcheck
+    ####################################################
+    # intt calculation
+    X_o_1d = intt(output_data_h, prime=p.prime)
+    zeta_inv_ext_X = ntt_init.Initilization(zeta_inv, r_hintt)
     
-    ntt_s = Verifier.sum_verify(ntt_i_g_t, r2, ntt_flag=True)
+    F_W_out_ext = Ver.multi_ext(output_data_h, r_intt, width=len(r_intt))
+    F_zeta_inv_ext = Ver.multi_ext(zeta_inv_ext_X, r_intt, width=len(r_intt))
+    #F_intt_in_ext = (F_W_out_ext*F_zeta_inv_ext*p.N_inv) % p.prime
+    #print(f"debug:: F_intt_in_ext is {F_intt_in_ext}")
+
+    X_o_sum, X_o_g_t = Pro.sumcheck_ntt(output_data_h, zeta_inv_ext_X, r_intt, inverse=True)
+
+    # intt extension at r_hintt
+    F_X_intt_out_ext = Ver.multi_ext(X_o_1d, r_hintt, width=len(r_hintt))
+
+    assert (X_o_sum == F_X_intt_out_ext),  \
+        f'INTT Check Error! INTT input sumcheck: \n X_o_sum = {X_o_sum}, F_X_intt_out_ext = {F_X_intt_out_ext}'
+
+    extension_values = (F_W_out_ext, F_zeta_ext, F_zeta_inv_ext)
+    proof = (X_i_g_t, w_i_g_t, proof_h, X_o_g_t, extension_values)
+
+    return proof, X_o_1d
+
+
+
+
+
+
+
+
+def convolution_verifier(Ver: S.Verifier, vk, proof, in_ext, out_ext, r):
+
+    # Parse proof
+    X_i_g_t, w_i_g_t, proof_h, X_o_g_t, extension_values = proof
+    # F_W_in_ext used for ntt sum
+    F_W_in_ext, _, _, _ = proof_h
+    # F_W_out_ext and F_zeta_inv_ext used for intt last extension
+    (F_W_out_ext, F_zeta_ext, F_zeta_inv_ext) = extension_values
+
+    # Parse random check points
+    (r_hntt, r_ntt, r_hintt, r_intt) = r
+
+    ####################################################
+    # Run intt sumcheck
+    ####################################################
+    X_o_s = Ver.sum_verify(X_o_g_t, r_intt, ntt_flag=True)
+    X_o_sum = out_ext
+    # Final output check,
+    # Verifier does this check:
+    # hadmard output(intt input): F_W_out(u*);  intt matrix: F_zeta_inv(z*, u*);    
+    # intt_out_ext calculated by Verifier (extension at random point (z*, u*)),
+    # Relationship should hold: F_W_out(u*) * F_zeta_inv(z*, u*) *N_inv = intt_out_ext
+    X_o_ext = (F_W_out_ext*F_zeta_inv_ext*p.N_inv) % p.prime
+    g.sumcheck_verification(X_o_s, X_o_sum, X_o_g_t, X_o_ext, tag="X_o INTT")
+
     
-    try:
-        if not len(ntt_s) == len(ntt_i_g_t):
-            raise ValueError('Length Check Error !!!')
+    ####################################################
+    # Run hadmard product gkr
+    ####################################################
+    # Use the same random point (r_hntt) at input layer
+    r_h_in = [[r_hntt, []]]
+    I.Verifier(proof_h, vk, r_h_in, [], F_W_out_ext, only_multi=True)
 
-        #if not sum_i == (ntt_i_g_t[0][0] + ntt_i_g_t[0][1]) % p.prime:
-        #    raise ValueError('Value Check Error !!! First Round Error !!!')
-        for j in range(len(ntt_s)-1):
-            if not ntt_s[j] == (ntt_i_g_t[j+1][0] + ntt_i_g_t[j+1][1]) % p.prime:
-                raise ValueError(f'Value Check Error !!! {j+1} Round Error !!!')
-        # Don't check the last extension
-    except ValueError as e:
-        print(f"NTT Sumcheck ERROR !!! {e}") 
-        sys.exit(1)
-    
-    return ntt_s[-1]
 
-def convolution_verifier(proof, r2: np.ndarray):
+    ####################################################
+    # Run intt sumcheck
+    ####################################################
+    # X_i_1d check
+    X_i_s = Ver.sum_verify(X_i_g_t, r_ntt, ntt_flag=True)
+    X_i_sum = F_W_in_ext[0]
+    X_i_ext = (in_ext[0]*F_zeta_ext) % p.prime
+    g.sumcheck_verification(X_i_s, X_i_sum, X_i_g_t, X_i_ext, tag="X_i NTT")
 
-    Ver = S.Verifier()
+    # w_i_1d check
+    w_i_s = Ver.sum_verify(w_i_g_t, r_ntt, ntt_flag=True)
+    w_i_sum = F_W_in_ext[1]
+    w_i_ext = (in_ext[1]*F_zeta_ext) % p.prime
+    g.sumcheck_verification(w_i_s, w_i_sum, w_i_g_t, w_i_ext, tag="w_i NTT")   
 
-    X_i_g_t, w_i_g_t = proof
+    return 0
 
-    W_hadmard_in_left = ntt_verifier(Ver, X_i_g_t, r2)
-    W_hadmard_in_right = ntt_verifier(Ver, w_i_g_t, r2)
-    
-    #I.Verifier(proof_h, vk, r_h, r_h_out, mu, output_data_h, input_data_h, only_multi=True)
+
 
 def main():
     # initialize test data
-    _, r1_X_i, r2_X_i, zeta_X_i, _ = T.init()
-    _, r1_w_i, r2_w_i, zeta_w_i, _ = T.init()
-    X_i_2d = np.random.randint(0, p.prime, size=(16, 16))    
+    _, _, _, zeta, zeta_inv = T.init()
+    con = ConVolution()
+    Ver = S.Verifier()
+    Pro = S.Prover()
+
+    X_i_2d = np.random.randint(0, p.prime, size=(p.con_size, p.con_size))    
     w_i_2d = np.array([[1,2], [3,4]], dtype='int32')
 
-    r1 = (r1_X_i.tolist(), r1_w_i.tolist())
-    print(f"r1_X_i is {r1_X_i}")
-    r2 = (r2_X_i.tolist(), r2_w_i.tolist())
-    zeta = (zeta_X_i.tolist(), zeta_w_i.tolist())
-    r_out_h = [random.randint(0, p.prime) for _ in range(p.bitwise)]
-    r = (r1, r2, r_out_h)
+    # Generate random points
+    r_hntt = [random.randint(0, p.prime) for _ in range(p.bitwise)]
+    r_hintt = [random.randint(0, p.prime) for _ in range(p.bitwise)]
+    r_ntt = [random.randint(0, p.prime) for _ in range(p.bitwise)]
+    r_intt = [random.randint(0, p.prime) for _ in range(p.bitwise)]
+    r = (r_hntt, r_ntt, r_hintt, r_intt)
 
-    #vk = I.set_up(gate_list, r_h, r_h_out, mu, only_multi=True)
+    # Convert 2D matrix to 1D sequence
+    X_i_1d, w_i_1d = con.shape(X_i_2d, w_i_2d)
 
-    proof = convolution_prover(X_i_2d, w_i_2d, zeta, r, mu=[])
+    # Input data extension at a random point
+    in_X_ext = Ver.multi_ext(X_i_1d, r_ntt, width=len(r_ntt))
+    in_w_ext = Ver.multi_ext(w_i_1d, r_ntt, width=len(r_ntt))
+    in_ext = (in_X_ext, in_w_ext)
+    
+    # Setup
+    vk = I.set_up(gate_list=h.hardmard_product(), r=[[r_hntt, []]], r_out=r_intt, mu=[], only_multi=True)
 
-    #convolution_verifier(proof, r2)
+    # Proving and Calculation
+    proof, X_o_1d = convolution_prover(Pro, Ver, X_i_1d, w_i_1d, zeta.tolist(), zeta_inv.tolist(), r, mu=[])
+
+    # Output data extension at a random point
+    out_ext = Ver.multi_ext(X_o_1d, r_hintt, width=len(r_hintt))
+
+    # Verification
+    convolution_verifier(Ver, vk, proof, in_ext, out_ext, r)
+
+    # Convert output 1D sequence to 2D matrix 
+    X_o_2d = con.trim(np.array(X_o_1d))
+
+    # Reference output
+    X_o_2d_ref = con.con2d(X_i_2d, w_i_2d)
+    print(f"X_o_2d is: \n {X_o_2d}")
+    print(f"X_o_2d_ref is: \n {X_o_2d_ref}")
 
 
 if __name__ == '__main__':

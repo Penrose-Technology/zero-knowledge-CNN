@@ -2,9 +2,11 @@ import sys
 import argparse
 import numpy as np
 from sympy import ntt, intt
+import extension as E
 import parameters as p
 from test_data import test_data as T
 import ntt_init
+
 
 class Prover:
     def __init__(self):
@@ -25,16 +27,22 @@ class Prover:
         return sum, g_t, A_F
     
     # Sumcheck for NTT transformation: s = c*F
-    def sumcheck_ntt(self, A_c, A_F, r, inverse=False, width=p.bitwise):
+    def sumcheck_ntt(self, A_c, A_F, r, inverse=False, width=p.bitwise, cubic=False):
+
         if inverse:
             sum = (A_c*A_F).sum()*p.N_inv % p.prime
         else:
-            sum = (A_c*A_F).sum() % p.prime 
+            sum = (A_c*A_F).sum() % p.prime
 
-        g_t = np.zeros((width,3), dtype='int32')
+        if cubic:
+            point_num = 4
+        else:
+            point_num = 3 
+
+        g_t = np.zeros((width, point_num), dtype='int32')
         for i in range(width):
             for b in range(2**(width-i-1)):
-                for t in range(3):
+                for t in range(point_num):
                     F_t = ( A_F[b]*(1 - t) + A_F[b+2**(width-i-1)]*t ) % p.prime 
                     c_t = ( A_c[b]*(1 - t) + A_c[b+2**(width-i-1)]*t ) % p.prime
                     g_t[i,t] = ( g_t[i,t] + F_t*c_t ) % p.prime
@@ -45,7 +53,22 @@ class Prover:
            g_t = p.N_inv*g_t % p.prime
 
         return sum, g_t
-
+    
+    # Sumcheck for cubic function: s = a*b*c
+    def sumcheck_cubic(self, A_a, A_b, A_c, r, width=p.bitwise):
+        sum = (A_a*A_b*A_c).sum() % p.prime
+        g_t = np.zeros((width, 4), dtype='int32')
+        for i in range(width):
+            for b in range(2**(width-i-1)):
+                for t in range(4):
+                    a_t = ( A_a[b]*(1 - t) + A_a[b+2**(width-i-1)]*t ) % p.prime 
+                    b_t = ( A_b[b]*(1 - t) + A_b[b+2**(width-i-1)]*t ) % p.prime
+                    c_t = ( A_c[b]*(1 - t) + A_c[b+2**(width-i-1)]*t ) % p.prime
+                    g_t[i,t] = ( g_t[i,t] + a_t*b_t*c_t ) % p.prime
+                A_a[b] = ( A_a[b]*(1 - r[i]) + A_a[b+2**(width-i-1)]*r[i] ) % p.prime
+                A_b[b] = ( A_b[b]*(1 - r[i]) + A_b[b+2**(width-i-1)]*r[i] ) % p.prime
+                A_c[b] = ( A_c[b]*(1 - r[i]) + A_c[b+2**(width-i-1)]*r[i] ) % p.prime
+        return sum, g_t
 
 class Verifier:
     def __init__(self):
@@ -58,9 +81,9 @@ class Verifier:
     def solve_linear(self, a, r):
         coefficient = np.array([[1,1],[1,2]])
         dependcy = np.array([a[1],a[2]])
-        x = np.linalg.solve(coefficient, dependcy)
+        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
         s = x[0] + x[1]*r
-        return x%p.prime, s%p.prime
+        return x, s%p.prime
     
     # Solve quadratic equation y = c + bx + ax^2
     #   e.g.    1 0 0         c       g(0)
@@ -69,19 +92,38 @@ class Verifier:
     def solve_quadratic(self, a, r):
         coefficient = np.array([[1,0,0],[1,1,1],[1,2,4]])
         dependcy = np.array([a[0],a[1],a[2]])
-        x = np.linalg.solve(coefficient, dependcy)
+        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
         s = x[0] + x[1]*r + x[2]*(r**2)
-        return x%p.prime, s%p.prime
+        return x, s%p.prime
+    
+    # Solve cubic equation y = d + cx + bx^2 + ax^3
+    #   e.g.    1 0 0 0         d       g(0)
+    #           1 1 1 1         c       g(1)
+    #         (             ) (   )    (    )
+    #           1 2 2^2 2^3     b       g(2)
+    #           1 3 3^2 3^3     a       g(3)
+    def solve_cubic(self, a, r):
+        coefficient = np.array([[1,0,0,0],[1,1,1,1],[1,2,4,8],[1,3,9,27]])
+        dependcy = np.array([a[0],a[1],a[2],a[3]])
+        #x = np.linalg.solve(coefficient, dependcy)
+        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
+        #print(f"debug:: x is {x}")
+        s = x[0] + x[1]*r + x[2]*(r**2) + x[3]*(r**3)
+        return x, s%p.prime
 
     # Verifier independly calculate s(r) with 3 points from prover (e.g. s(0), s(1), s(2)).
     # Note that s(x) is a linear equation or quadratic equation.
     # For the first iteration, check H ?= s_1 (0) + s_1 (1)
     # For next 2 ~ (l-1) iterations, check s_(i) (r_(i)) ?= s_(i+1) (0) + s_(i+1) (1)
-    def sum_verify(self, g_t, r, width=p.bitwise, ntt_flag=False):
+    def sum_verify(self, g_t, r, width=p.bitwise, ntt_flag=False, cubic=False):
         s = np.zeros(width, dtype='int32')
         if ntt_flag:
-            for i in range(width):
-                _, s[i] = self.solve_quadratic(g_t[i], r[i])
+            if cubic:
+                for i in range(width):
+                    _, s[i] = self.solve_cubic(g_t[i], r[i])   
+            else:
+                for i in range(width):
+                    _, s[i] = self.solve_quadratic(g_t[i], r[i])         
         else:
             for i in range(width):
                 _, s[i] = self.solve_linear(g_t[i], r[i])
@@ -173,6 +215,7 @@ def sumcheck_ntt_verify(c, A, r1, r2, inverse=False):
 def main():
     parser = argparse.ArgumentParser(description='specify sumcheck operation')
     parser.add_argument("--operation", '-o', choices=['ntt', 'intt', 'single'], default='single')
+    parser.add_argument("--cubic", "-c", action="store_true")
     args = parser.parse_args()
 
     # initialize test data
@@ -182,6 +225,16 @@ def main():
         sumcheck_ntt_verify(c, A, r1, r2)
     elif args.operation == 'intt':
         sumcheck_ntt_verify(c, inv_A, r1, r2, inverse=True)
+    elif args.cubic:
+        A_a = np.random.randint(0, p.prime, size=p.N)
+        A_b = np.random.randint(0, p.prime, size=p.N)
+        A_c = np.random.randint(0, p.prime, size=p.N)
+        P = Prover()
+        sum, g_t = P.sumcheck_cubic(A_a, A_b, A_c, r2)
+        g_t_s = [(g_t[i][0]+g_t[i][1])%p.prime for i in range(len(g_t))]
+        V = Verifier()
+        s = V.sum_verify(g_t, r2, ntt_flag=True, cubic=True)
+        print(f"sum is {sum} \n g_t_s is {g_t_s} \n s is {s}")
     else:
         sumcheck_verify(c, r2)
 

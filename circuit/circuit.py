@@ -135,12 +135,19 @@ def get_F_gate(gate_type: str, gate_list: List[List[str]]):
         raise ValueError("Error Gate Type !!!")
 
     for i, layer in enumerate(gate_list):
-        input_size = {'a': len(layer), 'b': 2*len(layer), 'c': 2*len(layer)}
-        F_gate[f'The {i}-th Layer Input Size'] = input_size
-        F_gate_i: Dict[Tuple[int, int, int], int] = {}
-        for j, gate in enumerate(layer):
-            if gate == gate_type_name:
-                F_gate_i[(j, 2*j, 2*j+1)] = 1
+        F_gate_i = {}
+        if i == 0:
+            input_size = {'a': len(layer), 'b': len(layer)}
+            F_gate[f'The {i}-th Layer Input Size'] = input_size
+            for j, gate in enumerate(layer):
+                if gate == gate_type_name:
+                    F_gate_i[(j, j)] = 1
+        else:
+            input_size = {'a': len(layer), 'b': 2*len(layer), 'c': 2*len(layer)}
+            F_gate[f'The {i}-th Layer Input Size'] = input_size
+            for j, gate in enumerate(layer):
+                if gate == gate_type_name:
+                    F_gate_i[(j, 2*j, 2*j+1)] = 1
         F_gate[f'The {i}-th Layer {gate_type}-Gate'] = F_gate_i
     #print(f"F_gate len is {len(F_gate)}")
 
@@ -156,6 +163,12 @@ def get_F_W(map: List[layer], final_out: List[int]):
     F_W.append(final_out)
     return F_W
 
+def get_F_W_in_separate(input_data):
+
+    F_W_l = [i[0] for i in input_data]
+    F_W_r = [i[1] for i in input_data]
+
+    return F_W_l, F_W_r
 
 
 def main():
@@ -176,11 +189,14 @@ def main():
     F_W = get_F_W(map, final_out)
     print(f"F_W is \n {F_W}")
 
+    F_W_l, F_W_r = get_F_W_in_separate(input_data)
+    print(f"F_W_l is \n{F_W_l}, \n F_W_r is \n{F_W_r}")
+
     F_add = get_F_gate_1('ADD', gate_list)
-    print(f"F_add is \n {F_add}")
+    #print(f"F_add is \n {F_add}")
 
     F_multi = get_F_gate_1('MULTI', gate_list)
-    print(f"F_multi is \n {F_multi}")
+    #print(f"F_multi is \n {F_multi}")
   
 
 if __name__ == '__main__':

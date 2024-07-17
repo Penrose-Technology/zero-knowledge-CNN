@@ -7,7 +7,7 @@ n_root = 11
 N = 2**bitwise #256
 N_inv = N**(prime-2) % prime
 
-con_size = 10
+con_size = 16
 kernel_size = 2
 padding_size = 0
 stride = 1

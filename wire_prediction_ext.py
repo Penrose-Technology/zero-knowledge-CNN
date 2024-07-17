@@ -75,7 +75,35 @@ def _get_F_gate_i_ext(layer_i_size: Dict[str, int], \
         a_i_extend = single_extension(value, a_i, r_a, a_bitwidth)
         F_gate_a_i_ext = (F_gate_a_i_ext + a_i_extend) % p.prime
 
-    return F_gate_a_i_ext    
+    return F_gate_a_i_ext
+
+def _get_F_gate_i_ext_input(layer_i_size: Dict[str, int], \
+                            layer_i_gate: Dict[Tuple[int, int], int], \
+                            r_a: List[int], r_b: List[int]):
+
+    F_gate_b_i_ext: Dict[int, int] = {}
+
+    b_bitwidth = int(np.log2(layer_i_size['b']))
+    a_bitwidth = int(np.log2(layer_i_size['a']))
+
+    # inilization
+    for key, value in layer_i_gate.items():
+        a_i,  _ = key
+        F_gate_b_i_ext[a_i] = 0
+    F_gate_a_i_ext = 0
+    
+    # multilinear extension in (a, b) direction.
+    for key, value in layer_i_gate.items():
+        a_i, b_i = key
+        b_i_extend = single_extension(value, b_i, r_b, b_bitwidth)
+        F_gate_b_i_ext[a_i] = (F_gate_b_i_ext[a_i] + b_i_extend) % p.prime
+
+    for key, value in F_gate_b_i_ext.items():
+        a_i = key
+        a_i_extend = single_extension(value, a_i, r_a, a_bitwidth)
+        F_gate_a_i_ext = (F_gate_a_i_ext + a_i_extend) % p.prime
+
+    return F_gate_a_i_ext     
 
 
 def get_F_gate_ext(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[int]]], extension_check=False):
@@ -89,28 +117,48 @@ def get_F_gate_ext(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[in
 
         idx = i // 2
 
-        if key == f'The {idx}-th Layer Input Size':
-            layer_i_size = value
-            c_bitwidth = int(np.log2(layer_i_size['c']))
-            b_bitwidth = int(np.log2(layer_i_size['b']))
-            a_bitwidth = int(np.log2(layer_i_size['a']))
+        if idx == 0:
+            if key == f'The {idx}-th Layer Input Size':
+                layer_i_size = value
+                b_bitwidth = int(np.log2(layer_i_size['b']))
+                a_bitwidth = int(np.log2(layer_i_size['a']))
 
-        if key == f'The {idx}-th Layer {gate_type}-Gate':
-            layer_i_gate = value
-            if extension_check:
-                for key, value in layer_i_gate.items():
-                    #get original value (before extension)
-                    a_o_i, b_o_i, c_o_i = key
-                    c_o_i_v = [int(char) for char in np.binary_repr(c_o_i, width=c_bitwidth)]
-                    b_o_i_v = [int(char) for char in np.binary_repr(b_o_i, width=b_bitwidth)]
-                    a_o_i_v = [int(char) for char in np.binary_repr(a_o_i, width=a_bitwidth)]
+            if key == f'The {idx}-th Layer {gate_type}-Gate':
+                layer_i_gate = value
+                if extension_check:
+                    for key, value in layer_i_gate.items():
+                        #get original value (before extension)
+                        a_o_i, b_o_i = key
+                        b_o_i_v = [int(char) for char in np.binary_repr(b_o_i, width=b_bitwidth)]
+                        a_o_i_v = [int(char) for char in np.binary_repr(a_o_i, width=a_bitwidth)]
 
-                    # Points at {0, 1}^n should be equal before and after extension.
-                    if not _get_F_gate_i_ext(layer_i_size, layer_i_gate, a_o_i_v, b_o_i_v, c_o_i_v) == value:
-                        raise ValueError("Multilinear Extension Error ! Value unequal !!!")
-                return [0]            
-            else:
-                out.append(_get_F_gate_i_ext(layer_i_size, layer_i_gate, r[idx][0], r[idx][1], r[idx][2]))
+                        # Points at {0, 1}^n should be equal before and after extension.
+                        if not _get_F_gate_i_ext_input(layer_i_size, layer_i_gate, a_o_i_v, b_o_i_v) == value:
+                            raise ValueError("Multilinear Extension Error ! Value unequal !!!")
+                    return [0] 
+        else:
+            if key == f'The {idx}-th Layer Input Size':
+                layer_i_size = value
+                c_bitwidth = int(np.log2(layer_i_size['c']))
+                b_bitwidth = int(np.log2(layer_i_size['b']))
+                a_bitwidth = int(np.log2(layer_i_size['a']))
+
+            if key == f'The {idx}-th Layer {gate_type}-Gate':
+                layer_i_gate = value
+                if extension_check:
+                    for key, value in layer_i_gate.items():
+                        #get original value (before extension)
+                        a_o_i, b_o_i, c_o_i = key
+                        c_o_i_v = [int(char) for char in np.binary_repr(c_o_i, width=c_bitwidth)]
+                        b_o_i_v = [int(char) for char in np.binary_repr(b_o_i, width=b_bitwidth)]
+                        a_o_i_v = [int(char) for char in np.binary_repr(a_o_i, width=a_bitwidth)]
+
+                        # Points at {0, 1}^n should be equal before and after extension.
+                        if not _get_F_gate_i_ext(layer_i_size, layer_i_gate, a_o_i_v, b_o_i_v, c_o_i_v) == value:
+                            raise ValueError("Multilinear Extension Error ! Value unequal !!!")
+                    return [0]            
+                else:
+                    out.append(_get_F_gate_i_ext(layer_i_size, layer_i_gate, r[idx][0], r[idx][1], r[idx][2]))
 
     return out
 
@@ -158,6 +206,73 @@ def _get_F_gate_ext_g_t(gate_type: str, \
     #print(f"g_t is {g_t}, sum is {sum}")
     return sum_i, g_t_i
 
+#########################
+def _get_F_gate_ext_g_t_input(gate_type: str, \
+                        layer_in_size: Dict[str, int], \
+                        layer_in_gate: Dict[Tuple[int, int], int], \
+                        r_a: List[int], r_b: List[int],  \
+                        mu: int, \
+                        F_W_left_in: List[int], F_W_right_in: List[int]):
+    
+    if not ((gate_type == 'ADD') or (gate_type == 'MULTI')):
+        raise ValueError("Error Gate Type !!!")
+
+    # Input layer, b_bitwidth==a_bitwidth
+    a_bitwidth = int(np.log2(layer_in_size['a']))         
+    A_F_in = np.zeros((2**a_bitwidth), dtype='int32')
+    #print(f"A_F is {A_F}, shape is {np.shape(A_F)}")
+
+    # Initalize F(a, b) from dictionary and precompute F(a*, b)
+    for key, init_value in layer_in_gate.items():
+        a_o_i,  _ = key
+        init_idx = a_o_i
+        unextended_value = (init_value*mu) % p.prime
+        A_F_in[init_idx] = (A_F_in[init_idx] + single_extension(unextended_value, a_o_i, r_a, bitwidth=a_bitwidth) ) % p.prime
+    #print(f"A_F_i is {A_F_i}")      
+
+    # Evaluation
+    # W_in_add(b) = W_in_left(b) + W_in_right(b)
+    # W_in_multi(b) = W_in_left(b) * W_in_right(b)
+    if gate_type == 'ADD':
+        F_W_l = (np.array(F_W_left_in) + np.array(F_W_right_in)) % p.prime
+        #F_W_r = np.ones_like(F_W_l)
+        sum_in, g_t_in = P.sumcheck_ntt(A_F_in, F_W_l, r_b, width=a_bitwidth, cubic=True)
+    else:
+        F_W_l = np.array(F_W_left_in)
+        F_W_r = np.array(F_W_right_in)
+        sum_in, g_t_in = P.sumcheck_cubic(A_F_in, F_W_l, F_W_r, r_b, width=a_bitwidth)
+
+    # Extension
+    # f(b) = add(a*, b)*W_add(b) + multi(a*, b)*W_multi(b)
+    
+    #print(f"g_t is {g_t}, sum is {sum}")
+    return sum_in, g_t_in
+#########################
+
+#########################
+def get_F_gate_ext_g_t_input( layer_in_size: Dict[str, int], \
+                        layer_in_add: Dict[Tuple[int, int], int], \
+                        layer_in_multi: Dict[Tuple[int, int], int], \
+                        r_a: List[int], r_b: List[int], \
+                        mu: int, \
+                        F_W_left_in: List[int], F_W_right_in: List[int], \
+                        only_add=False, only_multi=False):
+    if only_add:
+        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input('ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_multi_in = 0; g_t_multi_in = np.zeros_like(g_t_add_in)
+    if only_multi:
+        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input('MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_add_in = 0; g_t_add_in = np.zeros_like(g_t_multi_in)
+    else:
+        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input('ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input('MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+
+    sum_in = (sum_add_in + sum_multi_in) % p.prime
+    g_t_in = (g_t_add_in + g_t_multi_in) % p.prime
+
+    return sum_in, g_t_in
+#########################
+
 def get_F_gate_ext_g_t( layer_i_size: Dict[str, int], \
                         layer_i_add: Dict[Tuple[int, int, int], int], \
                         layer_i_multi: Dict[Tuple[int, int, int], int], \
@@ -185,6 +300,7 @@ def main():
     parser.add_argument("--operation", '-o', choices=['ADD', 'MULTI'], default='ADD')
     parser.add_argument("--cali", '-c', action="store_true")
     parser.add_argument("--g_t", '-g', action="store_true")
+    parser.add_argument("--input", '-i', action="store_true")
     args = parser.parse_args()
 
     # circuit inilization
@@ -212,6 +328,7 @@ def main():
     F_gate_multi = C.get_F_gate('MULTI', gate_list)
     F_W = C.get_F_W(map, final_out)
     print(f"F_W is: \n{F_W}")
+    F_W_l, F_W_r = C.get_F_W_in_separate(input_data)
     out_1 = get_F_gate_ext(args.operation, F_gate, r)
     print(f"out_1 is: \n{out_1}")
 
@@ -229,6 +346,13 @@ def main():
                         mu=0, \
                         F_W_i=F_W[0])
         ###
+    elif args.input:
+        get_F_gate_ext_g_t_input(layer_in_size={'a': 4, 'b': 8}, \
+                        layer_in_add={(0, 0): 1, (2, 2): 1, (3, 3): 1}, \
+                        layer_in_multi={(1, 1): 1}, \
+                        r_a=r[0][0], r_b=[51, 52], \
+                        mu=0, \
+                        F_W_left_in=F_W_l, F_W_right_in=F_W_r)
 
     #regular extension
     else:
