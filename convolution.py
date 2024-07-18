@@ -1,16 +1,15 @@
 import numpy as np
-import parameters as p
-import sys
 import random
 from sympy import ntt, intt
 from typing import List, Tuple
 import argparse
-from utilities import gadget as g
-import interactive_proof as I
 import hadmard_product as h
-import sumcheck as S
-from test_data import test_data as T
-import ntt_init
+from utilities import gadget as g
+from Circuit import interactive_proof as I
+from utilities import test_data as T
+from utilities import ntt_init
+from utilities import parameters as p
+from utilities import sumcheck as S
 
 class ConVolution:
     def __init__(self):
@@ -51,7 +50,7 @@ class ConVolution:
         return self.trim(u_bar)
     
 
-
+@g.timer
 def convolution_prover(Pro: S.Prover, Ver: S.Verifier, \
                        X_i_1d: np.ndarray, w_i_1d: np.ndarray, zeta: List[int], zeta_inv: List[int],  \
                        r: Tuple[List[int], List[int], List[int], List[int]], mu: List[List[int]]):
@@ -91,7 +90,7 @@ def convolution_prover(Pro: S.Prover, Ver: S.Verifier, \
     r_h_in = [[r_hntt, []]]
     # Use the same random point (r_hintt) at outnput layer
     r_h_out = r_intt
-    proof_h, output_data_h = I.generate_proof(input_data_h, gate_list_h, r_h_in, r_h_out, mu, only_multi=True)
+    proof_h, output_data_h = I.generate_proof(Pro, input_data_h, gate_list_h, r_h_in, r_h_out, mu, only_multi=True)
     #print(f"proof_h is {proof_h}")
     #print(f"output_data_h is: \n {output_data_h}")
 
@@ -129,10 +128,7 @@ def convolution_prover(Pro: S.Prover, Ver: S.Verifier, \
 
 
 
-
-
-
-
+@g.timer
 def convolution_verifier(Ver: S.Verifier, vk, proof, in_ext, out_ext, r):
 
     # Parse proof
@@ -164,7 +160,7 @@ def convolution_verifier(Ver: S.Verifier, vk, proof, in_ext, out_ext, r):
     ####################################################
     # Use the same random point (r_hntt) at input layer
     r_h_in = [[r_hntt, []]]
-    I.Verifier(proof_h, vk, r_h_in, [], F_W_out_ext, only_multi=True)
+    I.Verifier(Ver, proof_h, vk, r_h_in, [], F_W_out_ext, only_multi=True)
 
 
     ####################################################
@@ -228,8 +224,13 @@ def main():
 
     # Reference output
     X_o_2d_ref = con.con2d(X_i_2d, w_i_2d)
-    print(f"X_o_2d is: \n {X_o_2d}")
-    print(f"X_o_2d_ref is: \n {X_o_2d_ref}")
+
+    if X_o_2d.all() == X_o_2d_ref.all():
+        print("""            ###############################
+            #      Convolution Pass       #
+            ###############################""")
+    else:
+        raise ValueError('Convolution Value Check Failed !!!')
 
 
 if __name__ == '__main__':

@@ -2,10 +2,14 @@ from typing import List, Dict, Tuple
 import numpy as np
 import sys
 import os
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir))
+parent_dir = os.path.dirname(current_dir)
+utilities_dir = os.path.join(parent_dir, 'utilities')
 sys.path.append(parent_dir)
-import parameters as p
+sys.path.append(utilities_dir)
+
+from utilities import parameters as p
 
 class gate:
     def __init__(self, name: str, left: int, right: int) -> None:

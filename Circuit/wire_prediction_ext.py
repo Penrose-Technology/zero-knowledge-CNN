@@ -1,45 +1,43 @@
 import numpy as np
-import extension
-import parameters as p
 from typing import List, Dict, Tuple
 import argparse
-from circuit import circuit as C
+import circuit as C
+import parameters as p
 import sumcheck as S
-from extension import single_extension
+from calculation import single_extension
 
-P = S.Prover()
 
-def get_F_gate_ext_t(F_gate_i, r): 
-    if not len(F_gate_i.shape) == 3:
-        raise ValueError("Error input polynomial dimention!!!")
-    if not ( (2**len(r[0])==F_gate_i.shape[0]) or (2**len(r[1])==F_gate_i.shape[1]) or (2**len(r[2])==F_gate_i.shape[2]) ):
-        raise ValueError("Error random size!!!")
-    a_size, b_size, c_size = F_gate_i.shape
-    a_bitwise, b_bitwise, c_bitwise = int(np.log2(a_size)), int(np.log2(b_size)), int(np.log2(c_size))
+# def get_F_gate_ext_t(F_gate_i, r): 
+#     if not len(F_gate_i.shape) == 3:
+#         raise ValueError("Error input polynomial dimention!!!")
+#     if not ( (2**len(r[0])==F_gate_i.shape[0]) or (2**len(r[1])==F_gate_i.shape[1]) or (2**len(r[2])==F_gate_i.shape[2]) ):
+#         raise ValueError("Error random size!!!")
+#     a_size, b_size, c_size = F_gate_i.shape
+#     a_bitwise, b_bitwise, c_bitwise = int(np.log2(a_size)), int(np.log2(b_size)), int(np.log2(c_size))
 
-    F_gate_a_ext = np.zeros((a_size), dtype='int32')
-    F_gate_b_ext = np.zeros((a_size, b_size), dtype='int32')
-    F_gate_c_ext = np.copy(F_gate_i)
-    for a_i in range(a_size):
-        for b_i in range(b_size):
-            for c_i in range(c_size):
-                F_gate_c_ext[a_i][b_i][c_i] = single_extension(F_gate_c_ext[a_i][b_i][c_i], c_i, r[2], c_bitwise)
-            # store c direction after extension, b direction before extension
-            F_gate_b_ext[a_i][b_i] = F_gate_c_ext[a_i][b_i].sum()%p.prime
+#     F_gate_a_ext = np.zeros((a_size), dtype='int32')
+#     F_gate_b_ext = np.zeros((a_size, b_size), dtype='int32')
+#     F_gate_c_ext = np.copy(F_gate_i)
+#     for a_i in range(a_size):
+#         for b_i in range(b_size):
+#             for c_i in range(c_size):
+#                 F_gate_c_ext[a_i][b_i][c_i] = single_extension(F_gate_c_ext[a_i][b_i][c_i], c_i, r[2], c_bitwise)
+#             # store c direction after extension, b direction before extension
+#             F_gate_b_ext[a_i][b_i] = F_gate_c_ext[a_i][b_i].sum()%p.prime
 
-            F_gate_b_ext[a_i][b_i] = single_extension(F_gate_b_ext[a_i][b_i], b_i, r[1], b_bitwise)   
-        # store b direction after extension, a direction before extension
-        F_gate_a_ext[a_i] = F_gate_b_ext[a_i].sum()%p.prime
+#             F_gate_b_ext[a_i][b_i] = single_extension(F_gate_b_ext[a_i][b_i], b_i, r[1], b_bitwise)   
+#         # store b direction after extension, a direction before extension
+#         F_gate_a_ext[a_i] = F_gate_b_ext[a_i].sum()%p.prime
 
-        F_gate_a_ext[a_i] = single_extension(F_gate_a_ext[a_i], a_i, r[0], a_bitwise)
-        out = F_gate_a_ext.sum()%p.prime
+#         F_gate_a_ext[a_i] = single_extension(F_gate_a_ext[a_i], a_i, r[0], a_bitwise)
+#         out = F_gate_a_ext.sum()%p.prime
 
-    #print(f"F_gate_c_ext shape is {F_gate_c_ext.shape}, F_gate_c_ext is \n{F_gate_c_ext}")
-    #print(f"F_gate_b_ext shape is {F_gate_b_ext.shape}, F_gate_b_ext is \n{F_gate_b_ext}")
-    #print(f"F_gate_a_ext shape is {F_gate_a_ext.shape}, F_gate_a_ext is \n{F_gate_a_ext}")
-    #print(f"---output is {out}")
+#     #print(f"F_gate_c_ext shape is {F_gate_c_ext.shape}, F_gate_c_ext is \n{F_gate_c_ext}")
+#     #print(f"F_gate_b_ext shape is {F_gate_b_ext.shape}, F_gate_b_ext is \n{F_gate_b_ext}")
+#     #print(f"F_gate_a_ext shape is {F_gate_a_ext.shape}, F_gate_a_ext is \n{F_gate_a_ext}")
+#     #print(f"---output is {out}")
 
-    return out
+#     return out
 
 def _get_F_gate_i_ext(layer_i_size: Dict[str, int], \
                       layer_i_gate: Dict[Tuple[int, int, int], int], \
@@ -163,7 +161,8 @@ def get_F_gate_ext(gate_type: str, F_gate: Dict[str, Dict], r: List[List[List[in
     return out
 
 
-def _get_F_gate_ext_g_t(gate_type: str, \
+def _get_F_gate_ext_g_t(P:S.Prover, \
+                        gate_type: str, \
                         layer_i_size: Dict[str, int], \
                         layer_i_gate: Dict[Tuple[int, int, int], int], \
                         r_a: List[int], r_b: List[int], r_c: List[int], \
@@ -207,12 +206,13 @@ def _get_F_gate_ext_g_t(gate_type: str, \
     return sum_i, g_t_i
 
 #########################
-def _get_F_gate_ext_g_t_input(gate_type: str, \
-                        layer_in_size: Dict[str, int], \
-                        layer_in_gate: Dict[Tuple[int, int], int], \
-                        r_a: List[int], r_b: List[int],  \
-                        mu: int, \
-                        F_W_left_in: List[int], F_W_right_in: List[int]):
+def _get_F_gate_ext_g_t_input(P:S.Prover, \
+                              gate_type: str, \
+                              layer_in_size: Dict[str, int], \
+                              layer_in_gate: Dict[Tuple[int, int], int], \
+                              r_a: List[int], r_b: List[int],  \
+                              mu: int, \
+                              F_W_left_in: List[int], F_W_right_in: List[int]):
     
     if not ((gate_type == 'ADD') or (gate_type == 'MULTI')):
         raise ValueError("Error Gate Type !!!")
@@ -250,22 +250,23 @@ def _get_F_gate_ext_g_t_input(gate_type: str, \
 #########################
 
 #########################
-def get_F_gate_ext_g_t_input( layer_in_size: Dict[str, int], \
-                        layer_in_add: Dict[Tuple[int, int], int], \
-                        layer_in_multi: Dict[Tuple[int, int], int], \
-                        r_a: List[int], r_b: List[int], \
-                        mu: int, \
-                        F_W_left_in: List[int], F_W_right_in: List[int], \
-                        only_add=False, only_multi=False):
+def get_F_gate_ext_g_t_input(P: S.Prover, \
+                             layer_in_size: Dict[str, int], \
+                             layer_in_add: Dict[Tuple[int, int], int], \
+                             layer_in_multi: Dict[Tuple[int, int], int], \
+                             r_a: List[int], r_b: List[int], \
+                             mu: int, \
+                             F_W_left_in: List[int], F_W_right_in: List[int], \
+                             only_add=False, only_multi=False):
     if only_add:
-        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input('ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input(P, 'ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
         sum_multi_in = 0; g_t_multi_in = np.zeros_like(g_t_add_in)
     if only_multi:
-        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input('MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input(P, 'MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
         sum_add_in = 0; g_t_add_in = np.zeros_like(g_t_multi_in)
     else:
-        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input('ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
-        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input('MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_add_in, g_t_add_in = _get_F_gate_ext_g_t_input(P, 'ADD', layer_in_size, layer_in_add, r_a, r_b, mu, F_W_left_in, F_W_right_in)
+        sum_multi_in, g_t_multi_in = _get_F_gate_ext_g_t_input(P, 'MULTI', layer_in_size, layer_in_multi, r_a, r_b, mu, F_W_left_in, F_W_right_in)
 
     sum_in = (sum_add_in + sum_multi_in) % p.prime
     g_t_in = (g_t_add_in + g_t_multi_in) % p.prime
@@ -273,7 +274,8 @@ def get_F_gate_ext_g_t_input( layer_in_size: Dict[str, int], \
     return sum_in, g_t_in
 #########################
 
-def get_F_gate_ext_g_t( layer_i_size: Dict[str, int], \
+def get_F_gate_ext_g_t( P: S.Prover, \
+                        layer_i_size: Dict[str, int], \
                         layer_i_add: Dict[Tuple[int, int, int], int], \
                         layer_i_multi: Dict[Tuple[int, int, int], int], \
                         r_a: List[int], r_b: List[int], r_c: List[int], \
@@ -281,14 +283,14 @@ def get_F_gate_ext_g_t( layer_i_size: Dict[str, int], \
                         F_W_i: List[int], \
                         only_add=False, only_multi=False):
     if only_add:
-        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t('ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
+        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t(P,'ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
         sum_multi_i = 0; g_t_multi_i = np.zeros_like(g_t_add_i)
     if only_multi:
-        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t('MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
+        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t(P,'MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
         sum_add_i = 0; g_t_add_i = np.zeros_like(g_t_multi_i)
     else:
-        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t('ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
-        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t('MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
+        sum_add_i, g_t_add_i = _get_F_gate_ext_g_t(P,'ADD', layer_i_size, layer_i_add, r_a, r_b, r_c, mu, F_W_i)
+        sum_multi_i, g_t_multi_i = _get_F_gate_ext_g_t(P, 'MULTI', layer_i_size, layer_i_multi, r_a, r_b, r_c, mu, F_W_i)
 
     sum_i = (sum_add_i + sum_multi_i) % p.prime
     g_t_i = (g_t_add_i + g_t_multi_i) % p.prime
@@ -298,7 +300,6 @@ def get_F_gate_ext_g_t( layer_i_size: Dict[str, int], \
 def main():
     parser = argparse.ArgumentParser(description='specify gate type')
     parser.add_argument("--operation", '-o', choices=['ADD', 'MULTI'], default='ADD')
-    parser.add_argument("--cali", '-c', action="store_true")
     parser.add_argument("--g_t", '-g', action="store_true")
     parser.add_argument("--input", '-i', action="store_true")
     args = parser.parse_args()
@@ -325,7 +326,6 @@ def main():
     # extension
     F_gate = C.get_F_gate(args.operation, gate_list)
     print(f"F_gate is \n {F_gate}")
-    F_gate_multi = C.get_F_gate('MULTI', gate_list)
     F_W = C.get_F_W(map, final_out)
     print(f"F_W is: \n{F_W}")
     F_W_l, F_W_r = C.get_F_W_in_separate(input_data)
@@ -333,37 +333,25 @@ def main():
     print(f"out_1 is: \n{out_1}")
 
     # extension check
-    if args.cali:
-        if get_F_gate_ext(args.operation, F_gate, r, extension_check=True) == [0]:
-            print("Extension Check Pass !")
-    elif args.g_t:
-        #get_F_gate_ext_g_t(F_gate, F_gate_multi, r, F_W)
-        ###
-        get_F_gate_ext_g_t(layer_i_size={'a': 4, 'b': 8, 'c': 8}, \
+    P = S.Prover()
+    
+    if args.g_t:
+        get_F_gate_ext_g_t(P, layer_i_size={'a': 4, 'b': 8, 'c': 8}, \
                         layer_i_add={(0, 0, 1): 1, (2, 4, 5): 1, (3, 6, 7): 1}, \
                         layer_i_multi={(1, 2, 3): 1}, \
                         r_a=r[0][0], r_b=r[0][1], r_c=r[0][2], \
                         mu=0, \
                         F_W_i=F_W[0])
-        ###
     elif args.input:
-        get_F_gate_ext_g_t_input(layer_in_size={'a': 4, 'b': 8}, \
+        get_F_gate_ext_g_t_input(P, layer_in_size={'a': 4, 'b': 8}, \
                         layer_in_add={(0, 0): 1, (2, 2): 1, (3, 3): 1}, \
                         layer_in_multi={(1, 1): 1}, \
                         r_a=r[0][0], r_b=[51, 52], \
                         mu=0, \
                         F_W_left_in=F_W_l, F_W_right_in=F_W_r)
-
-    #regular extension
     else:
-        out_2 = []
-        F_gate = C.get_F_gate_1(args.operation, gate_list)
-        for i in range(len(gate_list)):
-            out_2.append(get_F_gate_ext_t(F_gate[i], r[i]))
-        print(f"out_2 is: \n{out_2}")
-    
-        if not out_1 == out_2:
-            raise ValueError("Multilinear Extension Not Equal To Regular Extension !!!")
+        if get_F_gate_ext(args.operation, F_gate, r, extension_check=True) == [0]:
+            print("Extension Check Pass !")
 
 if __name__ == '__main__':
     main()

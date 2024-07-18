@@ -1,9 +1,11 @@
 import numpy as np
-import parameters as p
+import sys, os
 from typing import List, Dict, Tuple
 import argparse
-from circuit import circuit as C
-from extension import single_extension
+import circuit as C
+
+from calculation import single_extension
+import parameters as p
 import sumcheck as S
 
 def _get_F_W_i_ext(F_W_i: List[int], input_bitwidth: int, r: List[int]):

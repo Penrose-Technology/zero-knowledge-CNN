@@ -1,20 +1,15 @@
-import sys
+import sys, os
 import numpy as np
-import parameters as p
 from typing import List, Dict, Tuple
-import argparse
-from circuit import circuit as C
+import circuit as C
 import wire_prediction_ext as Wire
 import value_prediction_ext as V
+
+import parameters as p
 import sumcheck as S
-from utilities import gadget as g
+import gadget as g
 
-
-Ver = S.Verifier()
-Pro = S.Prover()
-
-@g.timer
-def generate_proof(input_data, gate_list: List[List[str]], r: List[List[List[int]]], r_out: List[int], mu: List[List[int]], only_add=False, only_multi=False):
+def generate_proof(P: S.Prover, input_data, gate_list: List[List[str]], r: List[List[List[int]]], r_out: List[int], mu: List[List[int]], only_add=False, only_multi=False):
     cir = C.circuit(np.array(input_data), gate_list)
     map, output_data = cir.circuit_imp()
     #cir.print_map(map)
@@ -94,52 +89,52 @@ def generate_proof(input_data, gate_list: List[List[str]], r: List[List[List[int
         # Circuit only has one layer
         if only_add:
             # add_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) + W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(layer_i_size[d-1], layer_i_add[d-1], {}, r_out, r[d-1][0], 1, F_W_l, F_W_r, only_add=True)
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[d-1], layer_i_add[d-1], {}, r_out, r[d-1][0], 1, F_W_l, F_W_r, only_add=True)
         elif only_multi:
             # multi_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) * W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(layer_i_size[d-1], {}, layer_i_multi[d-1], r_out, r[d-1][0], 1, F_W_l, F_W_r, only_multi=True)
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[d-1], {}, layer_i_multi[d-1], r_out, r[d-1][0], 1, F_W_l, F_W_r, only_multi=True)
         else:
             # add_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) + W_i(c*^(d))) + multi_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) * W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(layer_i_size[d-1], layer_i_add[d-1], layer_i_multi[d-1], r_out, r[d-1][0], 1, F_W_l, F_W_r)
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[d-1], layer_i_add[d-1], layer_i_multi[d-1], r_out, r[d-1][0], 1, F_W_l, F_W_r)
     else:
         # The first d-1 layer
         for i in range(d-1):
             if only_add:
                 if i == 0:
                     # mu_0*[add_0(b*^(1), g*)*(W_l(g*) + W_r(g*))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], layer_i_add[i], {}, r[i+1][0], r[i][0], mu[i][0], F_W_l, F_W_r, only_add=True)
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], layer_i_add[i], {}, r[i+1][0], r[i][0], mu[i][0], F_W_l, F_W_r, only_add=True)
                     # mu_1*[add_0(c*^(1), g*)*(W_l(g*) + W_r(g*))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], layer_i_add[i], {}, r[i+1][1], r[i][0], mu[i][1], F_W_l, F_W_r, only_add=True) 
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], layer_i_add[i], {}, r[i+1][1], r[i][0], mu[i][1], F_W_l, F_W_r, only_add=True) 
                 else:
                     # mu_0*[add_i(b*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) + W_i(c*^(i)))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(layer_i_size[i], layer_i_add[i], {}, r[i+1][0], r[i][0], r[i][1], mu[i][0], F_W[i], only_add=True)
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], layer_i_add[i], {}, r[i+1][0], r[i][0], r[i][1], mu[i][0], F_W[i], only_add=True)
                     # mu_1*[add_i(c*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) + W_i(c*^(i)))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(layer_i_size[i], layer_i_add[i], {}, r[i+1][1], r[i][0], r[i][1], mu[i][1], F_W[i], only_add=True)
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], layer_i_add[i], {}, r[i+1][1], r[i][0], r[i][1], mu[i][1], F_W[i], only_add=True)
             elif only_multi:
                 if i == 0:
                     # mu_0*[multi_0(b*^(1), g*)*(W_l(g*) * W_r(g*))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], {}, layer_i_multi[i], r[i+1][0], r[i][0], mu[i][0], F_W_l, F_W_r, only_multi=True)
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], {}, layer_i_multi[i], r[i+1][0], r[i][0], mu[i][0], F_W_l, F_W_r, only_multi=True)
                     # mu_1*[multi_0(c*^(1), g*)*(W_l(g*) * W_r(g*))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], {}, layer_i_multi[i], r[i+1][1], r[i][0], mu[i][1], F_W_l, F_W_r, only_multi=True)  
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], {}, layer_i_multi[i], r[i+1][1], r[i][0], mu[i][1], F_W_l, F_W_r, only_multi=True)  
                 else:
                     # mu_0*[multi_i(b*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) * W_i(c*^(i)))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(layer_i_size[i], {}, layer_i_multi[i], r[i+1][0], r[i][0], r[i][1], mu[i][0], F_W[i], only_multi=True)
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], {}, layer_i_multi[i], r[i+1][0], r[i][0], r[i][1], mu[i][0], F_W[i], only_multi=True)
                     # mu_1*[multi_i(c*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) * W_i(c*^(i)))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(layer_i_size[i], {}, layer_i_multi[i], r[i+1][1], r[i][0], r[i][1], mu[i][1], F_W[i], only_multi=True)                           
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], {}, layer_i_multi[i], r[i+1][1], r[i][0], r[i][1], mu[i][1], F_W[i], only_multi=True)                           
             else:
                 if i == 0:
                     # mu_0*[add_0(b*^(1), g*)*(W_l(g*) + W_r(g*)) + multi_0(b*^(1), g*)*(W_l(g*) * W_r(g*))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
                                                                         r[i+1][0], r[i][0], mu[i][0], F_W_l, F_W_r)
                     # mu_1*[add_0(c*^(1), g*)*(W_l(g*) + W_r(g*)) + multi_0(c*^(1), g*)*(W_l(g*) * W_r(g*))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t_input(P, layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
                                                                         r[i+1][1], r[i][0], mu[i][1], F_W_l, F_W_r)  
                 else:
                     # mu_0*[add_i(b*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) + W_i(c*^(i))) + multi_i(b*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) * W_i(c*^(i)))]
-                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
+                    sum_i_left, g_t_i_left = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
                                                                     r[i+1][0], r[i][0], r[i][1], mu[i][0], F_W[i])
                     # mu_1*[add_i(c*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) + W_i(c*^(i))) + multi_i(c*^(i+1), b*^(i), c*^(i))*(W_i(b*^(i)) * W_i(c*^(i)))]
-                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
+                    sum_i_right, g_t_i_right = Wire.get_F_gate_ext_g_t(P, layer_i_size[i], layer_i_add[i], layer_i_multi[i], \
                                                                     r[i+1][1], r[i][0], r[i][1], mu[i][1], F_W[i])        
             
             sum_i = (sum_i_left + sum_i_right) % p.prime
@@ -150,13 +145,13 @@ def generate_proof(input_data, gate_list: List[List[str]], r: List[List[List[int
         # Output layer
         if only_add:
             # add_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) + W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(layer_i_size[d-1], layer_i_add[d-1], {}, r_out, r[d-1][0], r[d-1][1], 1, F_W[d-1], only_add=True)
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(P, layer_i_size[d-1], layer_i_add[d-1], {}, r_out, r[d-1][0], r[d-1][1], 1, F_W[d-1], only_add=True)
         elif only_multi:
             # multi_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) * W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(layer_i_size[d-1], {}, layer_i_multi[d-1], r_out, r[d-1][0], r[d-1][1], 1, F_W[d-1], only_multi=True)
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(P, layer_i_size[d-1], {}, layer_i_multi[d-1], r_out, r[d-1][0], r[d-1][1], 1, F_W[d-1], only_multi=True)
         else:
             # add_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) + W_i(c*^(d))) + multi_i(g, b*^(d), c*^(d))*(W_i(b*^(d)) * W_i(c*^(d)))
-            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(layer_i_size[d-1], layer_i_add[d-1], layer_i_multi[d-1], \
+            sum_i, g_t_i = Wire.get_F_gate_ext_g_t(P, layer_i_size[d-1], layer_i_add[d-1], layer_i_multi[d-1], \
                                                 r_out, r[d-1][0], r[d-1][1], 1, F_W[d-1])
 
 
@@ -174,17 +169,17 @@ def generate_proof(input_data, gate_list: List[List[str]], r: List[List[List[int
     return proof, output_data
 
 
-def get_s(g_t_i: np.ndarray, r_i: List[int], cubic=False):
+def get_s(Ver: S.Verifier, g_t_i: np.ndarray, r_i: List[int], cubic=False):
 
     s_i = Ver.sum_verify(g_t_i, r_i, width=len(r_i), ntt_flag=True, cubic=cubic)
 
-    print(f"verifier output, s is: \n{s_i}")
+    #print(f"debug:: verifier output, s is: \n{s_i}")
     return s_i
 
 
-def verification_i(sum_i: int, g_t_i: List[List[int]], ext_i: int, r_i: List[int], cubic=False, tag=None):
+def verification_i(Ver: S.Verifier, sum_i: int, g_t_i: List[List[int]], ext_i: int, r_i: List[int], cubic=False, tag=None):
 
-    s_i = get_s(np.array(g_t_i), r_i, cubic=cubic)
+    s_i = get_s(Ver, np.array(g_t_i), r_i, cubic=cubic)
     # print(f"extension at {r_i} is {ext_i}")
 
     g.sumcheck_verification(s_i, sum_i, g_t_i, ext_i, tag=tag)
@@ -192,7 +187,6 @@ def verification_i(sum_i: int, g_t_i: List[List[int]], ext_i: int, r_i: List[int
     return 0
 
 # Verifier should evaluate Add_i and Multi_i on his own.
-@g.timer
 def set_up(gate_list: List[List[str]], r: List[List[List[int]]], r_out: List[int], mu: List[List[int]], only_add=False, only_multi=False):
 
     # Get wire prediction F_add and F_multi
@@ -260,11 +254,11 @@ def set_up(gate_list: List[List[str]], r: List[List[List[int]]], r_out: List[int
                 F_multi_ext.append(F_multi_ext_i)
 
     vk = (F_add_ext, F_multi_ext)
-    print(f"debug:: F_add_ext is {F_add_ext}, F_multi_ext is {F_multi_ext}")
+    #print(f"debug:: F_add_ext is {F_add_ext}, F_multi_ext is {F_multi_ext}")
     return vk
 
-@g.timer
-def Verifier(proof, vk, r: List[List[List[int]]], mu: List[List[int]], F_W_out_ext: int, only_add=False, only_multi=False):
+
+def Verifier(Ver: S.Verifier, proof, vk, r: List[List[List[int]]], mu: List[List[int]], F_W_out_ext: int, only_add=False, only_multi=False):
 
     # Parse proof
     F_W_in_proof, F_W_b_proof, F_W_c_proof, F_proof = proof
@@ -303,8 +297,8 @@ def Verifier(proof, vk, r: List[List[List[int]]], mu: List[List[int]], F_W_out_e
             F_ext = F_multi_ext[d-1]*(F_W_in_ext[0] * F_W_in_ext[1]) % p.prime
         else:
             F_ext = (  F_add_ext[d-1]*(F_W_in_ext[0] + F_W_in_ext[1]) + F_multi_ext[d-1]*(F_W_in_ext[0] * F_W_in_ext[1])  ) % p.prime
-        print(f"debug:: F_ext is {F_ext}")
-        verification_i(F_W_out_ext, F_ext_g_t[d-1], F_ext, r[d-1][0], cubic=True, tag='GKR Output(0) Layer')
+        #print(f"debug:: F_ext is {F_ext}")
+        verification_i(Ver, F_W_out_ext, F_ext_g_t[d-1], F_ext, r[d-1][0], cubic=True, tag='GKR Output(0) Layer')
     else:
         if only_add:
             F_ext = F_add_ext[d-1]*(F_W_b_ext[d-2] + F_W_c_ext[d-2]) % p.prime
@@ -312,7 +306,7 @@ def Verifier(proof, vk, r: List[List[List[int]]], mu: List[List[int]], F_W_out_e
             F_ext = F_multi_ext[d-1]*(F_W_b_ext[d-2] * F_W_c_ext[d-2]) % p.prime
         else:
             F_ext = (  F_add_ext[d-1]*(F_W_b_ext[d-2] + F_W_c_ext[d-2]) + F_multi_ext[d-1]*(F_W_b_ext[d-2] * F_W_c_ext[d-2])  ) % p.prime
-        verification_i(F_W_out_ext, F_ext_g_t[d-1], F_ext, r_bc[d-1], tag=f'GKR Output({d-1}) Layer')
+        verification_i(Ver, F_W_out_ext, F_ext_g_t[d-1], F_ext, r_bc[d-1], tag=f'GKR Output({d-1}) Layer')
 
     if d == 1:
         # Circuit only has one layer.
@@ -357,9 +351,9 @@ def Verifier(proof, vk, r: List[List[List[int]]], mu: List[List[int]], F_W_out_e
             # Run sumcheck protocol
             #print(f"debug:::F_ext_i is {F_ext_i}, \n F_sum_i is {F_sum_i}, \n F_ext_g_t is {F_ext_g_t[i]}")
             if i == 0:
-                verification_i(F_sum_i, F_ext_g_t[i], F_ext_i, r[0][0], cubic=True, tag=f'GKR {i}-th Layer')
+                verification_i(Ver, F_sum_i, F_ext_g_t[i], F_ext_i, r[0][0], cubic=True, tag=f'GKR {i}-th Layer')
             else:
-                verification_i(F_sum_i, F_ext_g_t[i], F_ext_i, r_bc[i], tag=f'GKR {i}-th Layer')
+                verification_i(Ver, F_sum_i, F_ext_g_t[i], F_ext_i, r_bc[i], tag=f'GKR {i}-th Layer')
             
 
 def circuit_precheck(input_data: np.ndarray, gate_list: List[List[str]], r: List[List[List[int]]], mu: List[List[int]]):
@@ -395,6 +389,9 @@ def main():
     r_f = [70]
 
     mu = [[152, 398]]
+ 
+    Ver = S.Verifier()
+    Pro = S.Prover()
 
     # circuit check
     circuit_precheck(input_data, gate_list, r, mu)
@@ -403,14 +400,13 @@ def main():
     vk = set_up(gate_list, r, r_f, mu)
     
     # Proving
-    proof, final_out = generate_proof(input_data, gate_list, r, r_f, mu)
-    print(f"debug:: proof is {proof}")
+    proof, final_out = generate_proof(Pro, input_data, gate_list, r, r_f, mu)
     
     # Verification
     # Verifier evaluates W_out(z*) on his own from output layer (d-th layer).
     W_out_ext = Ver.multi_ext(final_out, r_f, width=len(r_f))
-    print(f"W_out_ext is {W_out_ext}")
-    Verifier(proof, vk, r, mu, W_out_ext)
+    #print(f"W_out_ext is {W_out_ext}")
+    Verifier(Ver, proof, vk, r, mu, W_out_ext)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,3 @@
-from networkx import omega
 import numpy as np
 import parameters as p
 from sympy.ntheory import n_order

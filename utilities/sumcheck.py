@@ -2,11 +2,10 @@ import sys
 import argparse
 import numpy as np
 from sympy import ntt, intt
-import extension as E
+from calculation import gaussian_elimination
 import parameters as p
-from test_data import test_data as T
 import ntt_init
-
+import test_data as T
 
 class Prover:
     def __init__(self):
@@ -81,7 +80,7 @@ class Verifier:
     def solve_linear(self, a, r):
         coefficient = np.array([[1,1],[1,2]])
         dependcy = np.array([a[1],a[2]])
-        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
+        x = gaussian_elimination(coefficient, dependcy, p.prime)
         s = x[0] + x[1]*r
         return x, s%p.prime
     
@@ -92,7 +91,7 @@ class Verifier:
     def solve_quadratic(self, a, r):
         coefficient = np.array([[1,0,0],[1,1,1],[1,2,4]])
         dependcy = np.array([a[0],a[1],a[2]])
-        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
+        x = gaussian_elimination(coefficient, dependcy, p.prime)
         s = x[0] + x[1]*r + x[2]*(r**2)
         return x, s%p.prime
     
@@ -106,7 +105,7 @@ class Verifier:
         coefficient = np.array([[1,0,0,0],[1,1,1,1],[1,2,4,8],[1,3,9,27]])
         dependcy = np.array([a[0],a[1],a[2],a[3]])
         #x = np.linalg.solve(coefficient, dependcy)
-        x = E.gaussian_elimination(coefficient, dependcy, p.prime)
+        x = gaussian_elimination(coefficient, dependcy, p.prime)
         #print(f"debug:: x is {x}")
         s = x[0] + x[1]*r + x[2]*(r**2) + x[3]*(r**3)
         return x, s%p.prime
