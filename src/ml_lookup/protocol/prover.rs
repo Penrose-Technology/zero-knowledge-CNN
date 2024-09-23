@@ -10,27 +10,9 @@ use crate::ml_lookup::{data_structures::LookupTable,
                        IPForLookupTable,
                     };
 
-#[cfg(feature = "honest_prover")]
 pub struct ProverState<F: Field> {
-    /// sampled univariate randomness given by the verifier
-    pub univariate_randomness: F,
-    /// sampled multivariate randomness given by the verifier
-    pub multivariate_randomness: Vec<F>,
-    /// list of m
-    /// m_0 = m, m_i = -1
-    pub m: Vec<DenseMultilinearExtension<F>>,
-    /// list of h
-    pub h :Vec<DenseMultilinearExtension<F>>,
-    /// q
-    pub q: DenseMultilinearExtension<F>,
-}
-
-#[cfg(not(feature = "honest_prover"))]
-pub struct ProverState<F: Field> {
-    /// sampled univariate randomness given by the verifier
-    pub univariate_randomness: F,
-    /// sampled multivariate randomness given by the verifier
-    pub multivariate_randomness: Vec<F>,
+    /// sampled univariate randomness beta given by the verifier
+    pub beta: F,
     /// lamda, used for h identity check
     pub lamda: F,
     /// z, used for h identity check
@@ -39,44 +21,28 @@ pub struct ProverState<F: Field> {
     /// m_0 = m, m_i = -1
     pub m: Vec<DenseMultilinearExtension<F>>,
     /// lagrange selsctor
-    pub lang: DenseMultilinearExtension<F>,
+    pub lang: Rc<DenseMultilinearExtension<F>>,
     /// list of phi
-    pub phi: Vec<DenseMultilinearExtension<F>>,
-    /// list of phi group production
-    pub phi_prod: Vec<DenseMultilinearExtension<F>>,
+    pub phi: Vec<Rc<DenseMultilinearExtension<F>>>,
+    /// list of phi_inv
+    pub phi_inv: Vec<DenseMultilinearExtension<F>>,
     /// list of h
     pub h :Vec<DenseMultilinearExtension<F>>,
-    /// list of identity h
-    pub h_identity: Vec<DenseMultilinearExtension<F>>,
     /// q
     pub q: DenseMultilinearExtension<F>,
 }
 
 impl<F: Field> ProverState<F> {
-    #[cfg(feature = "honest_prover")]
     pub fn init() -> Self {
         Self {
-            univariate_randomness: F::zero(),
-            multivariate_randomness: Vec::new(),
-            m: Vec::new(),
-            h: Vec::new(),
-            q: DenseMultilinearExtension::zero(),
-        }
-    }
-
-    #[cfg(not(feature = "honest_prover"))]
-    pub fn init() -> Self {
-        Self {
-            univariate_randomness: F::zero(),
-            multivariate_randomness: Vec::new(),
+            beta: F::zero(),
             lamda: F::zero(),
             z: Vec::new(),
             m: Vec::new(),
-            lang: DenseMultilinearExtension::zero(),
+            lang: Rc::new(DenseMultilinearExtension::zero()),
             phi: Vec::new(),
-            phi_prod: Vec::new(),
+            phi_inv: Vec::new(),
             h: Vec::new(),
-            h_identity: Vec::new(),
             q: DenseMultilinearExtension::zero(),
         }
     }
@@ -86,6 +52,7 @@ impl<F: Field> ProverState<F> {
 pub struct ProverMsg<F: Field> {
     pub m_r: F,
     pub f_r: Vec<F>,
+    pub phi_inv_r: Vec<F>,
     pub h_r: Vec<F>,
     pub q_info: PolynomialInfo,
     pub sub_proof: Proof<F>,
@@ -134,110 +101,53 @@ impl<F: Field> IPForLookupTable<F> {
         prover_st.m = m;
     }
 
-    #[cfg(feature = "honest_prover")]
-    pub fn h_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        let num_polys = table.private_columns.len() + 1;
-        let num_groups =  (num_polys + table.group_length - 1) / table.group_length;
-
-        for k in 0..num_groups {
-            let mut item = DenseMultilinearExtension::zero();
+    pub fn phi_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
+        for k in 0..table.num_groups {
             for i in 0..table.group_length {
                 let f_i;
+                if i==0 && k==0 {
+                    f_i = table.public_column.clone();                   
+                }
+                else {
+                    f_i = table.private_columns[i + k * table.group_length - 1].clone();
+                }
+                let phi = DenseMultilinearExtension::from_evaluations_vec(
+                    table.num_variables, 
+                    vec![prover_st.beta; 1 << table.num_variables]) + f_i;
+
+                let phi_inv: Vec<F> = phi.evaluations.iter()
+                                                     .map(|point| point.inverse().unwrap())
+                                                     .collect();
+
+                prover_st.phi.push(Rc::new(phi));
+                prover_st.phi_inv.push(DenseMultilinearExtension::from_evaluations_vec(table.num_variables, phi_inv));
+            }
+        }
+    }
+
+    pub fn h_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
+        for k in 0..table.num_groups {
+            let mut item = DenseMultilinearExtension::zero();
+            for i in 0..table.group_length {
                 let m_i;
                 if i==0 && k==0 {
-                    f_i = table.public_column.clone();        
                     m_i = prover_st.m[0].evaluations.clone();                   
            
                 }
                 else {
-                    f_i = table.private_columns[i + k * table.group_length - 1].clone();
                     m_i = prover_st.m[1].evaluations.clone();                   
                 }
 
-                let phi = DenseMultilinearExtension::from_evaluations_vec(
-                    table.num_variables, 
-                    vec![prover_st.univariate_randomness; 1 << table.num_variables]) + f_i;
+                let m_phi_inv = prover_st.phi_inv[i + k * table.group_length].evaluations.iter()
+                                                                                        .zip(m_i.into_iter())
+                                                                                        .map(|(point, multiplicand)| *point * multiplicand)
+                                                                                        .collect();
 
-                let m_phi_inv_i: Vec<F> = phi.evaluations.iter()
-                    .zip(m_i.into_iter())
-                    .map(|(point, multiplicand)| point.inverse().unwrap() * multiplicand)
-                    .collect();
-
-                let step = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, m_phi_inv_i);
+                let step = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, m_phi_inv);
                 item += step;
             }
             prover_st.h.push(item);
         }
-
-    }
-
-    #[cfg(not(feature = "honest_prover"))]
-    pub fn h_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        let num_polys = table.private_columns.len() + 1;
-        let num_groups =  (num_polys + table.group_length - 1) / table.group_length;
-
-        for k in 0..num_groups {
-            let mut phi_product_temp = vec![F::one(); 1 << table.num_variables];
-            for i in 0..table.group_length {
-                let rhs;
-                if i==0 && k==0 {
-                    rhs = table.public_column.clone();                   
-                }
-                else {
-                    rhs = table.private_columns[i + k * table.group_length - 1].clone();
-                }
-                let phi = DenseMultilinearExtension::from_evaluations_vec(
-                    table.num_variables, 
-                    vec![prover_st.univariate_randomness; 1 << table.num_variables]) + rhs;
-
-                phi_product_temp = phi_product_temp.iter()
-                                             .zip(phi.evaluations.iter())
-                                             .map(|(prod, nxt)| *prod * nxt)
-                                             .collect();
-                prover_st.phi.push(phi);
-            }
-            prover_st.phi_prod.push(DenseMultilinearExtension::from_evaluations_vec(table.num_variables, phi_product_temp));
-        }
-
-        for k in 0..num_groups {
-            let mut item = DenseMultilinearExtension::zero();
-            let mut identity_rhs = DenseMultilinearExtension::zero();                                          
-            for i in 0..table.group_length {
-                let rhs;
-                if i==0 && k==0 {
-                    rhs = prover_st.m[0].evaluations.clone();                   
-                }
-                else {
-                    rhs = prover_st.m[1].evaluations.clone();
-                }
-
-                let m_phi_inv_i: Vec<F> = prover_st.phi[i + k * table.group_length].evaluations.iter()
-                                                                            .zip(rhs.into_iter())
-                                                                            .map(|(point, multiplicand)| point.inverse().unwrap() * multiplicand)
-                                                                            .collect();
-
-                let step = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, m_phi_inv_i.clone());
-                item += step;
-
-                let m_phi_inv_prod_i = prover_st.phi_prod[k].evaluations.iter()
-                                                                    .zip(m_phi_inv_i.into_iter())
-                                                                    .map(|(prod, x)| *prod * x)
-                                                                    .collect();
-                let prod_step = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, m_phi_inv_prod_i);
-                identity_rhs += prod_step;
-            }
-            let m_phi_prod = prover_st.phi_prod[k].evaluations.iter()
-                                                        .zip(item.evaluations.iter())
-                                                        .map(|(h, phi_prod)| *h * *phi_prod)
-                                                        .collect();
-            let identity_lhs = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, m_phi_prod);
-            assert_eq!(identity_lhs, identity_rhs);
-
-            prover_st.h.push(item);
-
-            prover_st.h_identity.push(identity_lhs - identity_rhs);
-        }
-
     }
 
     pub fn lagrange_selector_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
@@ -271,13 +181,11 @@ impl<F: Field> IPForLookupTable<F> {
 
             lang_vec[index_rev] = value;
         }
-
-        prover_st.lang = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, lang_vec);   
+        prover_st.lang = Rc::new(DenseMultilinearExtension::from_evaluations_vec(table.num_variables, lang_vec));   
     }
 
-    #[cfg(feature = "honest_prover")]
     pub fn q_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        if prover_st.h.len() != (table.private_columns.len() + table.group_length) / table.group_length 
+        if prover_st.h.len() != table.num_groups
         {
             panic!("illegal h length!");
         }
@@ -286,37 +194,57 @@ impl<F: Field> IPForLookupTable<F> {
         prover_st.q = prover_st.h.iter().fold(q, |acc, step| acc + step.clone());
     }
 
-    #[cfg(not(feature = "honest_prover"))]
-    pub fn q_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        if prover_st.h.len() != prover_st.h_identity.len() {
-            panic!("illegal h length!");
-        }
 
-        let mut lamda = F::one();
-        let mut q = DenseMultilinearExtension::zero();
+    pub fn load_ploy(table: &LookupTable<F>, prover_st: &ProverState<F>) 
+                    ->  ListOfProductsOfPolynomials<F>
+    {
+        let mut poly = ListOfProductsOfPolynomials::new(table.num_variables);
+        let mut lamda = prover_st.lamda;
 
-        for k in 0..prover_st.h.len() {
-            lamda *= prover_st.univariate_randomness;
-            prover_st.lang *= lamda;
-            let item: Vec<F> = prover_st.lang.evaluations.iter()
-                                                  .zip(prover_st.h_identity[k].evaluations.iter())
-                                                  .map(|(x, y)| *x * *y)
-                                                  .collect();
-            let mut q_i = DenseMultilinearExtension::from_evaluations_vec(table.num_variables, item);
-            q_i += &prover_st.h[k];
-            q += q_i;
-        }
-
-        prover_st.q = q;
-    }
-
-    pub fn q_sumcheck(table: &LookupTable<F>, prover_st: &ProverState<F>) -> ListOfProductsOfPolynomials<F> {
+        // load q(x) = sum_{k} h_k(x)
         let product = vec![Rc::new(prover_st.q.clone())];
-        let mut q_poly = ListOfProductsOfPolynomials::new(table.num_variables);
-        q_poly.add_product(product.into_iter(), F::one());
+        poly.add_product(product.into_iter(), F::one());
 
-        q_poly
+        // load h_1(x) identity
+        // part 1, m_i , i \in I_1\{0}
+        let mut product = vec![Rc::clone(&prover_st.lang)];
+        let mut sum_phi_i1_inv = DenseMultilinearExtension::zero();
+        for i in 1..table.group_length {
+            sum_phi_i1_inv += &prover_st.phi_inv[i];
+        }
+        let h_1_plus_sum_phi_i1_inv = &prover_st.h[0] + &sum_phi_i1_inv;
+        product.push(Rc::new(h_1_plus_sum_phi_i1_inv));
+        for i in 0..table.group_length {
+            product.push(Rc::clone(&prover_st.phi[i]));
+        }
+        poly.add_product(product.into_iter(), F::from(lamda));
+        // part 2, m_0
+        let mut product = vec![Rc::clone(&prover_st.lang)];
+        product.push(Rc::new(prover_st.m[0].clone()));
+        for i in 1..table.group_length {
+            product.push(Rc::clone(&prover_st.phi[i]));
+        }
+        poly.add_product(product.into_iter(), F::from(- lamda));
+
+        // load h_i(x) identity
+        for k in 1..table.num_groups {
+            lamda *= prover_st.lamda;
+            let mut product = vec![Rc::clone(&prover_st.lang)];
+            let mut sum_phi_i_inv = DenseMultilinearExtension::zero();
+            for i in 0..table.group_length {
+                sum_phi_i_inv += &prover_st.phi_inv[i + k * table.group_length];
+            }
+            let h_i_plus_sum_phi_i_inv = &prover_st.h[k] + &sum_phi_i_inv;
+            product.push(Rc::new(h_i_plus_sum_phi_i_inv));
+            for i in 0..table.group_length {
+                product.push(Rc::clone(&prover_st.phi[i + k * table.group_length]));
+            }
+            poly.add_product(product.into_iter(), F::from(lamda));      
+        }
+
+        poly
     }
+
 }
 
 

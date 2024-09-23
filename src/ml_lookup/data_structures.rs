@@ -1,5 +1,4 @@
 use ark_ff::{Field, Zero};
-use ark_sumcheck::{gkr_round_sumcheck, ml_sumcheck, rng};
 use ark_poly::DenseMultilinearExtension;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
@@ -15,6 +14,8 @@ pub struct LookupTable<F: Field> {
     pub group_length: usize,
     /// number of variables of the polynomial
     pub num_variables: usize,
+    /// number of groups
+    pub num_groups: usize,
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone, Debug)]
@@ -38,7 +39,7 @@ impl<F: Field> LookupTable<F> {
             num_private_columns: self.private_columns.len(),
             group_length: self.group_length,
             num_variables: self.num_variables,
-            num_groups: (self.private_columns.len() + self.group_length) / self.group_length,
+            num_groups: self.num_groups,
         }
     }
 }
@@ -50,7 +51,8 @@ impl<F: Field> LookupTable<F> {
             public_column: DenseMultilinearExtension::zero(),
             max_private_columns: 10,
             group_length,
-            num_variables
+            num_variables,
+            num_groups: 1,
         }
     }
 
@@ -62,6 +64,11 @@ impl<F: Field> LookupTable<F> {
         if self.max_private_columns < self.private_columns.len() {
             panic!("Exceed max column limitation");
         }
+
         self.private_columns.push(new_private_column);
+
+        let public_col_int = if self.public_column == DenseMultilinearExtension::zero() { 0 } else { 1 };
+
+        self.num_groups = (self.private_columns.len() + public_col_int + self.group_length - 1) / self.group_length;
     }
 }
