@@ -5,11 +5,9 @@ use ark_ff::{Field, UniformRand, Zero};
 use ark_poly::DenseMultilinearExtension;
 use ark_poly::Polynomial;
 use ark_std::test_rng;
-use ark_sumcheck::ml_sumcheck::protocol::verifier;
 use ark_sumcheck::ml_sumcheck::MLSumcheck;
 use ark_test_curves::bls12_381::Fr;
 use ark_sumcheck::rng::{Blake2b512Rng, FeedableRNG};
-use ark_std::rc::Rc;
 
 fn initialization() -> LookupTable<Fr>{
     let public_column = DenseMultilinearExtension::from_evaluations_vec(3, vec![Fr::from(0), Fr::from(1), Fr::from(2), Fr::from(3), Fr::from(4), Fr::from(5), Fr::from(0), Fr::from(0)]);
@@ -64,15 +62,7 @@ fn prover_test() {
         sum += &sigma_h.evaluations[i];
         //println!("sum is {}", sum);
     }
-    assert!(sum == Fr::zero(), "summation of h is not equal zero!");
-
-    // test all h identity is zero
-    // for k in 0..prover_st.h_identity.len() {
-    //     for i in 0..(1 << table.num_variables) {
-    //         assert!(prover_st.h_identity[k].evaluations[i] == Fr::zero(),
-    //                 "h_identity is not zero!");
-    //     }
-    // }
+    assert_eq!(sum, Fr::zero(), "summation of h is not equal zero!");
 
     // test lagrange selector
     // should be one at boolean-hypercube, in reverse order.
@@ -100,14 +90,8 @@ fn prover_test() {
     for i in 0..(1 << table.num_variables) {
         sum += prover_st.q.evaluations[i];
     }
-    assert!(sum == Fr::zero(), "summation of q is not equal zero!");
-    assert!(prover_st.q == sigma_h, "q is error!");
-
-    //IPForLookupTable::q_sumcheck(&table, &prover_st);
-    prover_st.lamda = Fr::rand(&mut rng);
-    let poly_list = IPForLookupTable::load_ploy(&table, &prover_st);
-    let poly_list_info = poly_list.info();
-    dbg!(poly_list_info.max_multiplicands, poly_list_info.num_variables);
+    assert_eq!(sum, Fr::zero(), "summation of q is not equal zero!");
+    assert_eq!(prover_st.q, sigma_h, "q is error!");
 }
 
 #[test]
@@ -127,7 +111,6 @@ fn verifier_test() {
     IPForLookupTable::lagrange_selector_evaluation(&table, &mut prover_st);
     IPForLookupTable::q_evaluation(&table, &mut prover_st);
     let q_poly = IPForLookupTable::load_ploy(&table, &prover_st);
-    dbg!(q_poly.info().max_multiplicands, q_poly.info().num_variables);
 
     let mut fs_rng = Blake2b512Rng::setup();
     let (sub_proof, r) = MLSumcheck::prove_as_subprotocol(&mut fs_rng, &q_poly)
@@ -160,7 +143,6 @@ fn verifier_test() {
     assert_eq!(prover_st.lang.evaluate(&r), verifier_st.lang_r);
 
     IPForLookupTable::q_r_evaluation(&table_info, &mut verifier_st);
-    dbg!(subclaim.expected_evaluation, &verifier_st.q_r);
 
     assert_eq!(verifier_st.q_r, subclaim.expected_evaluation);
 
@@ -168,7 +150,6 @@ fn verifier_test() {
 
 #[test]
 fn protocol_test() {
-    let mut rng = test_rng();
     let table = initialization();
 
     let prover_msg = MLLookupTable::prove(&table).expect("test error! can not generate prover message!");

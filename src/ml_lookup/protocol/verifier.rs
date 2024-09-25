@@ -46,23 +46,19 @@ impl<F: Field> VerifierState<F> {
     }
 }
 
-pub struct VerifierMsg<F: Field>  {
-    q_r: F,
-}
 
 impl<F: Field> IPForLookupTable<F> {
+
+    #[inline]
     pub fn h_r_evaluation(table_info: &LookupTableInfo<F>, verifier_st: &mut VerifierState<F>, prover_msg: &ProverMsg<F>) {
-        if prover_msg.h_r.len() != table_info.num_groups {
-            panic!("illegal h_r length!");
-        }
+        assert_eq!(prover_msg.h_r.len(), table_info.num_groups, "Illegal h_r length!");
 
         verifier_st.h_r = prover_msg.h_r.clone();
     }
 
     pub fn phi_r_evaluation(table_info: &LookupTableInfo<F>, verifier_st: &mut VerifierState<F>, prover_msg: &ProverMsg<F>) {
-        if prover_msg.f_r.len() != table_info.num_private_columns {
-            panic!("illegal f_r length!");
-        }
+        assert_eq!(prover_msg.f_r.len(), table_info.num_private_columns, "Illegal f_r length!");
+
         let t_r = table_info.public_column.evaluate(&verifier_st.r);
         let phi_0 = t_r + verifier_st.beta;
         verifier_st.phi_r.push(phi_0);
@@ -74,14 +70,13 @@ impl<F: Field> IPForLookupTable<F> {
         
     }
 
+    #[inline]
     pub fn m_r_evaluation(verifier_st: &mut VerifierState<F>, prover_msg: &ProverMsg<F>) {
         verifier_st.m_r = prover_msg.m_r;                             
     }
 
     pub fn lagrange_selector_eva(table_info: &LookupTableInfo<F>, verifier_st: &mut VerifierState<F>) {
-        if verifier_st.z.len() != table_info.num_variables {
-            panic!("illegal lagrange random challange!")
-        }
+        assert_eq!(verifier_st.z.len(), table_info.num_variables, "Illegal lagrange random challange z!");
 
         let mut lang_vec = vec![F::zero(); 1 << table_info.num_variables];
         for idx in 0..(1 << table_info.num_variables) as u32 {
@@ -113,15 +108,19 @@ impl<F: Field> IPForLookupTable<F> {
         verifier_st.lang = DenseMultilinearExtension::from_evaluations_vec(table_info.num_variables, lang_vec);   
     }
 
+    #[inline]
     pub fn lang_r_evaluation(table_info: &LookupTableInfo<F>, verifier_st: &mut VerifierState<F>) {
-        if verifier_st.r.len() != table_info.num_variables {
-            panic!("illegal lagrange evaluation point!")
-        }
-        
+        assert_eq!(verifier_st.r.len(), table_info.num_variables, "Illegal lagrange evaluation point r!");
+        assert_ne!(verifier_st.lang, DenseMultilinearExtension::zero(), "Polynomial lang(z, *) hasn't been evaluated!");
+
         verifier_st.lang_r = verifier_st.lang.evaluate(&verifier_st.r);
     }
 
     pub fn q_r_evaluation(table_info: &LookupTableInfo<F>, verifier_st: &mut VerifierState<F>) {
+        assert_ne!(verifier_st.phi_r.len(), 0, "Points phi(r) haven't been evaluated!");
+        assert_ne!(verifier_st.phi_inv_r.len(), 0, "Points phi_inv(r) haven't been evaluated!");
+        assert_ne!(verifier_st.lang_r, F::zero(), "Point lang(r) hasn't been evaluated!");
+        assert_ne!(verifier_st.h_r.len(), 0, "Points h(r) haven't been evaluated!");
 
         let phi: Vec<Vec<F>> = verifier_st.phi_r.chunks(table_info.group_length)
                                                 .map(|chunk| chunk.to_vec())

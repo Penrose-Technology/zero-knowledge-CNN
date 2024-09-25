@@ -67,7 +67,7 @@ impl <F: Field> MLLookupTable<F> {
         let (sub_proof, r) = MLSumcheck::prove_as_subprotocol(&mut fs_rng, &q_poly)
                                                                     .map(|x| (x.0, x.1.randomness))
                                                                     .expect("fail to sub prove");
-        dbg!(&r, prover_st.q.evaluate(&r));
+
         Ok(
             ProverMsg {
                 m_r: prover_st.m[0].evaluate(&r),
@@ -118,11 +118,9 @@ impl <F: Field> MLLookupTable<F> {
 
         let subclaim = MLSumcheck::verify_as_subprotocol(&mut fs_rng, &prover_msg.q_info,F::zero(), &prover_msg.sub_proof)
                                                                 .expect("fail to sub verify");
-        dbg!(subclaim.expected_evaluation);
 
         // get random point r
         verifier_st.r = subclaim.point;
-        dbg!(&verifier_st.beta, &verifier_st.r);
         // h(r) evaluation
         IPForLookupTable::h_r_evaluation(table_info, &mut verifier_st, prover_msg);
         // phi(r) evaluation
@@ -134,10 +132,12 @@ impl <F: Field> MLLookupTable<F> {
         // q(r) evaluation
         IPForLookupTable::q_r_evaluation(table_info, &mut verifier_st);
 
-        dbg!(verifier_st.q_r, subclaim.expected_evaluation);
-        Ok(
-            verifier_st.q_r - subclaim.expected_evaluation == F::zero()
-        )
+        if verifier_st.q_r == subclaim.expected_evaluation {
+            Ok(true)
+        }
+        else {
+            Err(Error::OtherError("Lookup Argument Verifier Reject!".to_string()))
+        }
 
     }
     

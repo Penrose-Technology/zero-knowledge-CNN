@@ -60,9 +60,10 @@ pub struct ProverMsg<F: Field> {
 
 impl<F: Field> IPForLookupTable<F> {
     pub fn m_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        if table.max_private_columns < table.private_columns.len() {
-            panic!("Exceed max column limitation");
-        }
+        assert!(table.max_private_columns >= table.private_columns.len(), "Exceed max column limitation");
+        assert_ne!(table.public_column, DenseMultilinearExtension::zero(), "Table public column is empty!");
+        assert_ne!(table.private_columns.len(), 0, "Table private columns are empty!");
+
         let mut m = Vec::<DenseMultilinearExtension<F>>::with_capacity(2);
 
         let mut common_elements: HashMap<F, (F, F)> = table.public_column.evaluations
@@ -102,6 +103,9 @@ impl<F: Field> IPForLookupTable<F> {
     }
 
     pub fn phi_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
+        assert_ne!(table.public_column, DenseMultilinearExtension::zero(), "Table public column is empty!");
+        assert_ne!(table.private_columns.len(), 0, "Table private columns are empty!");
+
         for k in 0..table.num_groups {
             for i in 0..table.group_length {
                 let f_i;
@@ -126,6 +130,8 @@ impl<F: Field> IPForLookupTable<F> {
     }
 
     pub fn h_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
+        assert_ne!(prover_st.m.len(), 0, "Polynomial m has't been evaluated!");
+
         for k in 0..table.num_groups {
             let mut item = DenseMultilinearExtension::zero();
             for i in 0..table.group_length {
@@ -151,9 +157,7 @@ impl<F: Field> IPForLookupTable<F> {
     }
 
     pub fn lagrange_selector_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        if prover_st.z.len() != table.num_variables {
-            panic!("illegal lagrange random challange!")
-        }
+        assert_eq!(prover_st.z.len(), table.num_variables, "Illegal lagrange random challange z!");
 
         let mut lang_vec = vec![F::zero(); 1 << table.num_variables];
         for idx in 0..(1 << table.num_variables) as u32 {
@@ -185,10 +189,7 @@ impl<F: Field> IPForLookupTable<F> {
     }
 
     pub fn q_evaluation(table: &LookupTable<F>, prover_st: &mut ProverState<F>) {
-        if prover_st.h.len() != table.num_groups
-        {
-            panic!("illegal h length!");
-        }
+        assert_eq!(prover_st.h.len(), table.num_groups, "Illegal h length!"); 
 
         let q = DenseMultilinearExtension::zero();
         prover_st.q = prover_st.h.iter().fold(q, |acc, step| acc + step.clone());
@@ -198,6 +199,11 @@ impl<F: Field> IPForLookupTable<F> {
     pub fn load_ploy(table: &LookupTable<F>, prover_st: &ProverState<F>) 
                     ->  ListOfProductsOfPolynomials<F>
     {
+        assert_ne!(prover_st.h.len(), 0, "Polynomial h hasn't been evaluated!");
+        assert_ne!(prover_st.phi.len(), 0, "Polynomial phi hasn't been evaluated!");
+        assert_ne!(prover_st.q, DenseMultilinearExtension::zero(), "Polynomial q hasn't been evaluated!");
+        assert_ne!(prover_st.lang, Rc::new(DenseMultilinearExtension::zero()), "Lagrange selector hasn't been evaluated!");
+
         let mut poly = ListOfProductsOfPolynomials::new(table.num_variables);
         let mut lamda = prover_st.lamda;
 
