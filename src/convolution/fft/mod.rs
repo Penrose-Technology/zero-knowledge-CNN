@@ -1,5 +1,6 @@
 use ark_poly::{DenseMultilinearExtension, EvaluationDomain, GeneralEvaluationDomain};
 use ark_sumcheck::ml_sumcheck::protocol::{ListOfProductsOfPolynomials, verifier::SubClaim};
+use ark_sumcheck::ml_sumcheck::data_structures::PolynomialInfo;
 use ark_sumcheck::ml_sumcheck::{MLSumcheck, Proof};
 use ark_sumcheck::rng::{Blake2b512Rng, FeedableRNG};
 use ark_ff::FftField;
@@ -145,8 +146,8 @@ impl <F: FftField> Convpolynomial<F> {
     pub fn fft_load_poly(&self, public_info: &FftPublicInfo<F>) -> ListOfProductsOfPolynomials<F> {
         let mut poly = ListOfProductsOfPolynomials::new(self.log_size);
 
-        let multi_omega_ext = DenseMultilinearExtension::from_evaluations_vec(self.log_size, public_info.omega_ext.clone());
-        let multi_conv_poly = DenseMultilinearExtension::from_evaluations_vec(self.log_size, self.poly.clone());
+        let multi_omega_ext = DenseMultilinearExtension::from_evaluations_vec(self.log_size, led_sort(&public_info.omega_ext));
+        let multi_conv_poly = DenseMultilinearExtension::from_evaluations_vec(self.log_size, led_sort(&self.poly));
         let product = vec![Rc::new(multi_omega_ext), Rc::new(multi_conv_poly)];
         poly.add_product(product, F::one());
 
@@ -156,8 +157,8 @@ impl <F: FftField> Convpolynomial<F> {
     pub fn ifft_load_poly(&self, public_info: &FftPublicInfo<F>) -> ListOfProductsOfPolynomials<F> {
         let mut poly = ListOfProductsOfPolynomials::new(self.log_size);
 
-        let multi_inv_omega_ext = DenseMultilinearExtension::from_evaluations_vec(self.log_size, public_info.inv_omega_ext.clone());
-        let multi_conv_poly = DenseMultilinearExtension::from_evaluations_vec(self.log_size, self.poly.clone());
+        let multi_inv_omega_ext = DenseMultilinearExtension::from_evaluations_vec(self.log_size, led_sort(&public_info.inv_omega_ext));
+        let multi_conv_poly = DenseMultilinearExtension::from_evaluations_vec(self.log_size, led_sort(&self.poly));
         let product = vec![Rc::new(multi_inv_omega_ext), Rc::new(multi_conv_poly)];
         poly.add_product(product, F::from(self.size as u32).inverse().unwrap());
 
@@ -167,18 +168,18 @@ impl <F: FftField> Convpolynomial<F> {
 }
 
 impl <F: FftField> Convpolynomial<F> {
-    pub fn fft_ifft_sumcheck_prove(poly: &ListOfProductsOfPolynomials<F>) -> Proof<F> {
+    pub fn fft_ifft_sumcheck_prove(poly: &ListOfProductsOfPolynomials<F>) -> (Proof<F>, Vec<F>) {
         let mut fs_rng = Blake2b512Rng::setup();
-        let proof = MLSumcheck::prove_as_subprotocol(&mut fs_rng, &poly)
-                                                                    .map(|x| x.0)
+        let (proof, r) = MLSumcheck::prove_as_subprotocol(&mut fs_rng, &poly)
+                                                                    .map(|x| (x.0, x.1.randomness))
                                                                     .expect("fail to fft sumcheck prove!");
-        proof
+        (proof, r)
     }
 
-    pub fn fft_ifft_sumcheck_verify(proof: &Proof<F>, poly: &ListOfProductsOfPolynomials<F>) -> SubClaim<F>{
+    pub fn fft_ifft_sumcheck_verify(proof: &Proof<F>, poly_info: &PolynomialInfo) -> SubClaim<F>{
         let mut fs_rng = Blake2b512Rng::setup();
         let claimed_sum = MLSumcheck::extract_sum(&proof);
-        let fft_claim = MLSumcheck::verify_as_subprotocol(&mut fs_rng, &poly.info(), claimed_sum, &proof)
+        let fft_claim = MLSumcheck::verify_as_subprotocol(&mut fs_rng, poly_info, claimed_sum, &proof)
                                                                                     .expect("fail to fft sumcheck verify!");
         fft_claim
     }
@@ -246,8 +247,8 @@ mod fft_tests {
         dbg!(p_fft_u);
 
         let poly_p = poly.fft_load_poly(&fft_public_info);
-        let proof = Convpolynomial::fft_ifft_sumcheck_prove(&poly_p);
-        Convpolynomial::fft_ifft_sumcheck_verify(&proof, &poly_p);
+        let (proof, _) = Convpolynomial::fft_ifft_sumcheck_prove(&poly_p);
+        Convpolynomial::fft_ifft_sumcheck_verify(&proof, &poly_p.info());
 
         assert_eq!(MLSumcheck::extract_sum(&proof), p_fft_u, "fft sumcheck failed!");
     }
@@ -275,8 +276,8 @@ mod fft_tests {
         dbg!(p_ifft_u);
 
         let poly_p = poly.ifft_load_poly(&ifft_public_info);
-        let proof = Convpolynomial::fft_ifft_sumcheck_prove(&poly_p);
-        Convpolynomial::fft_ifft_sumcheck_verify(&proof, &poly_p);
+        let (proof, _) = Convpolynomial::fft_ifft_sumcheck_prove(&poly_p);
+        Convpolynomial::fft_ifft_sumcheck_verify(&proof, &poly_p.info());
 
         assert_eq!(MLSumcheck::extract_sum(&proof), p_ifft_u, "ifft sumcheck failed!");
     }
