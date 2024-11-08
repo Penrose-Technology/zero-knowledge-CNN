@@ -155,6 +155,5 @@ fn protocol_test() {
     let prover_msg = MLLookupTable::prove(&table).expect("test error! can not generate prover message!");
 
     let table_info = table.info();
-    let result = MLLookupTable::verifeir(&table_info, &prover_msg).expect("test error! can not generate verifier message!");
-    assert_eq!(result, true);
+    MLLookupTable::verify(&table_info, &prover_msg).expect("test error! can not generate verifier message!");
 }

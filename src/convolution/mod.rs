@@ -1,6 +1,7 @@
 use ark_std::marker::PhantomData;
 use ark_ff::FftField;
 use ark_poly::{DenseMultilinearExtension, SparseMultilinearExtension, GeneralEvaluationDomain, Polynomial};
+use ark_sumcheck::ml_sumcheck::protocol::verifier::SubClaim;
 use ark_sumcheck::Error;
 use ark_sumcheck::ml_sumcheck::{data_structures::PolynomialInfo, MLSumcheck, Proof};
 use crate::convolution::gkr::GKRConvProof;
@@ -26,6 +27,11 @@ pub struct ConvProof <F: FftField> {
     pub hadmard_proof: GKRConvProof<F>,
 }
 
+pub struct ConvSubclaim <F: FftField> {
+    pub x: SubClaim<F>,
+    pub w: SubClaim<F>
+}
+
 pub struct MLConvolution <F: FftField> (PhantomData<F>);
 
 
@@ -48,7 +54,7 @@ pub trait Conv <F: FftField> {
         g: &Vec<F>,
         domain: &GeneralEvaluationDomain<F>, 
         proof: &ConvProof<F>,
-    ) -> Result<(F, F), Error>;
+    ) -> Result<ConvSubclaim<F>, Error>;
 
 
 }
@@ -126,7 +132,7 @@ impl <F: FftField> Conv<F> for MLConvolution<F> {
         g: &Vec<F>,
         domain: &GeneralEvaluationDomain<F>, 
         proof: &ConvProof<F>,
-    ) -> Result<(F, F), Error> {
+    ) -> Result<ConvSubclaim<F>, Error> {
         assert_eq!(proof.x_poly_info.num_variables, proof.w_poly_info.num_variables, "X_poly and W_poly size mismatch!");
         assert_eq!(proof.x_poly_info.num_variables, proof.y_poly_info.num_variables, "X_poly and Y_poly size mismatch!");
 
@@ -174,13 +180,14 @@ impl <F: FftField> Conv<F> for MLConvolution<F> {
         let w_sum_v = MLSumcheck::extract_sum(&proof.w_proof);
 
         // hadmard -> fft check
-        let expected_evaluation_gkr = multi_i_guv * x_sum_u * w_sum_v;
-        if expected_evaluation_gkr == subclaim_gkr.expected_evaluation {
-            Ok((x_subclaim.expected_evaluation, w_subclaim.expected_evaluation))
+        if multi_i_guv * x_sum_u * w_sum_v != subclaim_gkr.expected_evaluation {
+            return Err(Error::Reject(Some("Convolution Verification Failed!".into())));
         }
-        else {
-            Err(Error::OtherError("Convolution Verifier Reject!".to_string()))
-        }
+
+        Ok(ConvSubclaim{
+            x: x_subclaim, 
+            w: w_subclaim
+        })            
     }
 }
 

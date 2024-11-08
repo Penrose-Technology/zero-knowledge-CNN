@@ -105,7 +105,7 @@ def quan_conv(x_i: np.ndarray, w_i: np.ndarray):
 def picture(y1: np.ndarray, y2: np.ndarray):
 
     plt.figure(figsize=(10, 6)) 
-    x = [i for i in range(0, 64)]
+    x = [i for i in range(0, len(y1)**2)]
 
     plt.subplot(1, 2, 1)
     plt.plot(x, y1.reshape(-1), label='y1', marker='o', color='r')  
