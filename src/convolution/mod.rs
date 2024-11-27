@@ -27,7 +27,7 @@ pub struct ConvProof <F: FftField> {
     pub hadmard_proof: GKRConvProof<F>,
 }
 
-pub struct ConvSubclaim <F: FftField> {
+pub struct ConvSubClaim <F: FftField> {
     pub x: SubClaim<F>,
     pub w: SubClaim<F>
 }
@@ -54,7 +54,7 @@ pub trait Conv <F: FftField> {
         g: &Vec<F>,
         domain: &GeneralEvaluationDomain<F>, 
         proof: &ConvProof<F>,
-    ) -> Result<ConvSubclaim<F>, Error>;
+    ) -> Result<ConvSubClaim<F>, Error>;
 
 
 }
@@ -132,7 +132,7 @@ impl <F: FftField> Conv<F> for MLConvolution<F> {
         g: &Vec<F>,
         domain: &GeneralEvaluationDomain<F>, 
         proof: &ConvProof<F>,
-    ) -> Result<ConvSubclaim<F>, Error> {
+    ) -> Result<ConvSubClaim<F>, Error> {
         assert_eq!(proof.x_poly_info.num_variables, proof.w_poly_info.num_variables, "X_poly and W_poly size mismatch!");
         assert_eq!(proof.x_poly_info.num_variables, proof.y_poly_info.num_variables, "X_poly and Y_poly size mismatch!");
 
@@ -184,7 +184,7 @@ impl <F: FftField> Conv<F> for MLConvolution<F> {
             return Err(Error::Reject(Some("Convolution Verification Failed!".into())));
         }
 
-        Ok(ConvSubclaim{
+        Ok(ConvSubClaim{
             x: x_subclaim, 
             w: w_subclaim
         })            

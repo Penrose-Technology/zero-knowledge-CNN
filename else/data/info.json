@@ -1,20 +1,20 @@
 {
-    "x_zero_point": 125,
-    "x_scalar": 0.007695729804641507,
-    "w_zero_point": 190,
-    "w_scalar": 0.005255408886345108,
-    "r_scalar": 0.005257238110281074,
+    "x_zero_point": 121,
+    "x_scalar": 0.00744540957619465,
+    "w_zero_point": 117,
+    "w_scalar": 0.007244404462866532,
+    "r_scalar": 0.012514749498323199,
     "bitwidth": 8,
-    "lookup_ceil": 2,
-    "lookup_floor": 3,
+    "lookup_ceil": 8,
+    "lookup_floor": 8,
     "int_scalar": 3,
     "kernel_size": [
-        3,
-        3
+        11,
+        11
     ],
     "input_size": [
-        64,
-        64
+        256,
+        256
     ],
     "group_length": 1
 }

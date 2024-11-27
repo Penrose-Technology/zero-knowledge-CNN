@@ -4,7 +4,8 @@ use ark_std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 use ark_sumcheck::ml_sumcheck::data_structures::PolynomialInfo;
 use crate::ml_lookup::data_structures::LookupTableInfo;
-use crate::convolution::{ConvProof, ConvSubclaim};
+use crate::convolution::{ConvProof, ConvSubClaim};
+use crate::ml_lookup::protocol::verifier::LookupSubClaim;
 use ark_sumcheck::ml_sumcheck::protocol::verifier::SubClaim as SubSubclaim;
 use ark_sumcheck::ml_sumcheck::Proof as TruncateProof;
 use crate::ml_lookup::protocol::prover::ProverMsg as ReluProof;
@@ -78,7 +79,7 @@ pub struct Proof<F: FftField> {
 }
 
 pub struct Subclaim<F: FftField> {
-    pub conv_subclaim: ConvSubclaim<F>,
+    pub conv_subclaim: ConvSubClaim<F>,
     pub truncate_subclaim: SubSubclaim<F>,
-    pub relu_subclaim: SubSubclaim<F>,
+    pub relu_subclaim: LookupSubClaim<F>,
 }

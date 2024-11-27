@@ -3,6 +3,8 @@ mod tests{
     //use std::ops::{Add, Mul};
     use ark_test_curves::bls12_381::Fr;
     use crate::conv_relu::data_structure::IPForConvRelu;
+    use ark_std::time::Instant;
+    use ark_std::fs::File;
 
     // fn conv_2d<T> (x: &Vec<Vec<T>>, w: &Vec<Vec<T>>) -> Vec<Vec<Fr>> 
     // where 
@@ -22,11 +24,40 @@ mod tests{
     //     y
     // }
 
+    fn benchmark<F, R> (func: F) ->
+        (R, f64)
+    where 
+        F: FnOnce() -> R,
+    {
+        let start = Instant::now();
+        let result = func();
+        let duration = start.elapsed();
+        (result, duration.as_secs_f64())
+    }
+
     #[test]
     fn layer_test() {
-        let (gp, mut pp, vp, input) = IPForConvRelu::<Fr>::setup();
-        let proof = IPForConvRelu::<Fr>::prove(&gp, &mut pp, &input);
+        let (setup_result, setup_time) = benchmark(|| IPForConvRelu::<Fr>::setup());
+        let (gp, mut pp, vp, input) = setup_result;
+ 
+        let (proof, prove_time) = benchmark(|| IPForConvRelu::<Fr>::prove(&gp, &mut pp, &input));
         let _ = IPForConvRelu::dump_output(&gp, &pp);
-        let _ = IPForConvRelu::verify(&gp, &vp, &proof).expect("Layer test failed!");
+
+        let (_, verify_time) = benchmark(|| IPForConvRelu::verify(&gp, &vp, &proof).expect("Layer test failed!"));
+        
+        #[derive(serde::Serialize)]
+        struct Performance {
+            setup: f64,
+            prove: f64,
+            verify: f64,
+        }
+
+        let performance = Performance {
+            setup: setup_time,
+            prove: prove_time,
+            verify: verify_time,  
+        };
+        let file = File::create("else/performance/benchmark.json").expect("Failed to open benchmark.json!");
+        serde_json::to_writer_pretty(file, &performance).expect("Benchmark data dump failure!");
     }
 }

@@ -9,7 +9,8 @@ use crate::conv_relu::data_structure::{GlobalParameters,
 use ark_sumcheck::ml_sumcheck::Proof as TruncateProof;
 use crate::convolution::ConvProof;
 use crate::ml_lookup::protocol::prover::ProverMsg as ReluProof;
-use crate::convolution::ConvSubclaim;
+use crate::convolution::ConvSubClaim;
+use crate::ml_lookup::protocol::verifier::LookupSubClaim;
 use ark_sumcheck::ml_sumcheck::protocol::verifier::SubClaim;
 use ark_sumcheck::Error;
 
@@ -19,7 +20,7 @@ impl <F: FftField> IPForConvRelu<F> {
         gp: &GlobalParameters<F>,
         vp: &VerifierParameters<F>,
         proof: &ConvProof<F>,
-    ) -> Result<ConvSubclaim<F>, Error> {
+    ) -> Result<ConvSubClaim<F>, Error> {
         let domain = GeneralEvaluationDomain::<F>::new(gp.input_size.0 * gp.input_size.1).unwrap();
         MLConvolution::verify(&vp.conv_info.g, &domain, proof)
     }
@@ -35,7 +36,7 @@ impl <F: FftField> IPForConvRelu<F> {
     pub fn relu_verify(
         vp: &VerifierParameters<F>,
         proof: &ReluProof<F>,
-    ) -> Result<SubClaim<F>, Error> {
+    ) -> Result<LookupSubClaim<F>, Error> {
         MLLookupTable::verify(&vp.relu_info.table_info, proof)
     }
 

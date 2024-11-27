@@ -28,6 +28,12 @@ pub struct VerifierState<F: Field> {
     pub q_r: F,
 }
 
+pub struct LookupSubClaim<F: Field> {
+    pub point: Vec<F>,
+    pub f: Vec<F>,
+    pub q: F,
+}
+
 impl<F: Field> VerifierState<F> {
     pub fn init() -> Self {
         Self {

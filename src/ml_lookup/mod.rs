@@ -1,12 +1,11 @@
 use ark_ff::Field;
 use ark_poly::Polynomial;
-use ark_sumcheck::ml_sumcheck::protocol::verifier::SubClaim;
 use data_structures::LookupTableInfo;
 use std::marker::PhantomData;
 use crate::ml_lookup::data_structures::LookupTable;
 use crate::ml_lookup::protocol::{IPForLookupTable, RandomChallenge};
 use crate::ml_lookup::protocol::prover::{ProverState, ProverMsg};
-use crate::ml_lookup::protocol::verifier::VerifierState;
+use crate::ml_lookup::protocol::verifier::{VerifierState, LookupSubClaim};
 use ark_sumcheck::rng::{Blake2b512Rng, FeedableRNG};
 use ark_sumcheck::Error;
 use ark_sumcheck::ml_sumcheck::MLSumcheck;
@@ -20,7 +19,8 @@ pub mod test;
 pub struct MLLookupTable<F: Field>(PhantomData<F>);
 
 impl <F: Field> MLLookupTable<F> {
-    pub fn prove(table: &LookupTable<F>) -> Result<ProverMsg<F>, Error> {
+    pub fn prove(table: &LookupTable<F>)
+     -> Result<ProverMsg<F>, Error> {
 
         let mut prover_random = RandomChallenge 
             {
@@ -81,7 +81,10 @@ impl <F: Field> MLLookupTable<F> {
         )
     }
 
-    pub fn verify(table_info: &LookupTableInfo<F>, prover_msg: &ProverMsg<F>) -> Result<SubClaim<F>, Error> {
+    pub fn verify(
+        table_info: &LookupTableInfo<F>, 
+        prover_msg: &ProverMsg<F>
+    ) -> Result<LookupSubClaim<F>, Error> {
 
         let mut verifier_random = RandomChallenge 
             {
@@ -136,7 +139,11 @@ impl <F: Field> MLLookupTable<F> {
            return Err(Error::Reject(Some("Lookup verification failed!".into())));
         }
 
-        Ok(subclaim)
+        Ok(LookupSubClaim { 
+            point: subclaim.point, 
+            f: prover_msg.f_r.clone(),
+            q: subclaim.expected_evaluation,
+         })
 
     }
     

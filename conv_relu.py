@@ -5,7 +5,7 @@ import json
 import os
 
 
-def quant_conv_and_relu(data_size: int, kernel_size: int, group_length: int):
+def quant_conv_and_relu(data_size: int, kernel_size: int, group_length: int, lookup_ceil: int, lookup_floor: int):
     data = np.random.normal(loc=0, scale=1, size=data_size**2)
     data_scaled = data / np.max(np.abs(data))
     x_i = data_scaled.reshape(data_size, data_size)
@@ -30,8 +30,6 @@ def quant_conv_and_relu(data_size: int, kernel_size: int, group_length: int):
     p = 52435875175126190479447740508185965837690552500527637822603658699938581184513
     Fp = GF(p)
     bitwidth = 8
-    lookup_ceil = 2
-    lookup_floor = 3
     int_scalar = 24
     m_Fp = int(m * (1 << int_scalar))
 
@@ -95,7 +93,6 @@ def quant_conv_and_relu(data_size: int, kernel_size: int, group_length: int):
     quant_output_data = np.array(dic['r_i_q'])
     
     picture(r_i_q, quant_output_data)
-    plt.savefig('./else/figures/conv_relu.png')
 
 
 
@@ -117,28 +114,35 @@ def scalar_and_zero(r: np.ndarray):
 def picture(y1: np.ndarray, y2: np.ndarray):
 
     plt.figure(figsize=(16, 10)) 
-    x = [i for i in range(0, len(y1)**2)]
+    y1 = y1.reshape(-1)
+    y2 = y2.reshape(-1)
+    x = np.arange(len(y1))
 
     plt.subplot(1, 2, 1)
-    plt.plot(x, y1.reshape(-1), label='reference', marker='o', color='r', linewidth=0.5)  
-    plt.plot(x, y2.reshape(-1), label='zkcnn', marker='s', color='g', linewidth=0.5)  
+    plt.plot(x, y1, linestyle='-', label='reference', marker='o', color='r', linewidth=0.5)  
+    plt.plot(x, y2, linestyle='-', label='zkcnn', marker='s', color='g', linewidth=0.5)  
     plt.title('Normal vs Snark')
     plt.xlabel('X values')
     plt.ylabel('Y values')
     plt.legend(loc="best")
 
     plt.subplot(1, 2, 2)
-    plt.plot(x, (y1 - y2).reshape(-1), label='derivation', marker='o', color='b', linewidth=0.5)
+    plt.plot(x, (y1 - y2).reshape(-1), label='derivation', marker='', color='b', linewidth=0.5)
     plt.title('Derivation')
     plt.xlabel('X values')
     plt.ylabel('Y values')
     plt.legend(loc="best")
+    plt.ylim(0, 25)
+    plt.yticks(np.arange(0, 25, 5))
 
+    plt.savefig('./else/figures/conv_relu.png')
 
 if __name__ == "__main__":
     
     kernel_size = 3
     data_size = 64
-    group_length = 1 # default 1
+    group_length = 1    # default 1
+    lookup_ceil = 2     # default 2 (should be larger when kernel size increases)
+    lookup_floor = 3    # default 3 (should be larger when kernel size increases)
 
-    quant_conv_and_relu(data_size, kernel_size, group_length)
+    quant_conv_and_relu(data_size, kernel_size, group_length, lookup_ceil, lookup_floor)

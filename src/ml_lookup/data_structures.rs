@@ -49,7 +49,7 @@ impl<F: Field> LookupTable<F> {
         LookupTable {
             private_columns: Vec::new(),
             public_column: DenseMultilinearExtension::zero(),
-            max_private_columns: 10,
+            max_private_columns: 100,
             group_length,
             num_variables,
             num_groups: 1,
